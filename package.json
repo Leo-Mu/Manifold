@@ -1,0 +1,94 @@
+{
+  "name": "vibe-context-manager",
+  "displayName": "Vibe Context Manager",
+  "description": "智能上下文管理和知识提取工具",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vibeContext.openContextManager",
+        "title": "打开上下文管理器",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.parseCurrentChat",
+        "title": "解析当前对话",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.composeContext",
+        "title": "组合上下文",
+        "category": "Vibe Context"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "vibeContextTree",
+          "name": "Context History",
+          "when": "vibeContext.enabled"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vibeContextContainer",
+          "title": "Vibe Context Manager",
+          "icon": "$(symbol-namespace)"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "vibeContext.openContextManager",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v"
+      },
+      {
+        "command": "vibeContext.composeContext",
+        "key": "ctrl+k ctrl+c",
+        "mac": "cmd+k cmd+c"
+      }
+    ],
+    "configuration": {
+      "title": "Vibe Context Manager",
+      "properties": {
+        "vibeContext.autoParseChats": {
+          "type": "boolean",
+          "default": true,
+          "description": "自动解析聊天记录"
+        },
+        "vibeContext.maxHistoryItems": {
+          "type": "number",
+          "default": 100,
+          "description": "最大历史记录数量"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/lowdb": "^1.0.15",
+    "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^4.9.4"
+  },
+  "dependencies": {
+    "lowdb": "^1.0.0"
+  }
+}
