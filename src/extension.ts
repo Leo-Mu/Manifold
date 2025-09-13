@@ -11,37 +11,46 @@ let contextTreeProvider: ContextTreeProvider;
 export function activate(context: vscode.ExtensionContext) {
     console.log('Vibe Context Manager 插件已激活');
 
-    // 初始化核心组件
-    const dbManager = new DatabaseManager(context.globalStorageUri.fsPath);
-    const chatParser = new ChatHistoryParser();
-    contextManager = new ContextManager(dbManager, chatParser);
-    contextTreeProvider = new ContextTreeProvider(contextManager);
+    try {
+        // 初始化核心组件
+        const dbManager = new DatabaseManager(context.globalStorageUri.fsPath);
+        const chatParser = new ChatHistoryParser();
+        contextManager = new ContextManager(dbManager, chatParser);
+        contextTreeProvider = new ContextTreeProvider(contextManager);
 
-    // 注册树视图
-    vscode.window.createTreeView('vibeContextTree', {
-        treeDataProvider: contextTreeProvider,
-        showCollapseAll: true
-    });
+        // 注册树视图
+        vscode.window.createTreeView('vibeContextTree', {
+            treeDataProvider: contextTreeProvider,
+            showCollapseAll: true
+        });
 
-    // 注册命令
-    const commands = [
-        vscode.commands.registerCommand('vibeContext.openContextManager', openContextManager),
-        vscode.commands.registerCommand('vibeContext.parseCurrentChat', parseCurrentChat),
-        vscode.commands.registerCommand('vibeContext.composeContext', composeContext),
-        vscode.commands.registerCommand('vibeContext.refreshTree', () => contextTreeProvider.refresh()),
-        vscode.commands.registerCommand('vibeContext.openContext', openContext)
-    ];
+        // 注册命令
+        const commands = [
+            vscode.commands.registerCommand('vibeContext.openContextManager', openContextManager),
+            vscode.commands.registerCommand('vibeContext.parseCurrentChat', parseCurrentChat),
+            vscode.commands.registerCommand('vibeContext.composeContext', composeContext),
+            vscode.commands.registerCommand('vibeContext.refreshTree', () => contextTreeProvider.refresh()),
+            vscode.commands.registerCommand('vibeContext.openContext', openContext)
+        ];
 
-    // 设置上下文
-    vscode.commands.executeCommand('setContext', 'vibeContext.enabled', true);
+        // 设置上下文
+        vscode.commands.executeCommand('setContext', 'vibeContext.enabled', true);
 
-    // 添加到订阅列表
-    context.subscriptions.push(...commands);
+        // 添加到订阅列表
+        context.subscriptions.push(...commands);
 
-    // 初始化数据库
-    dbManager.initialize().then(() => {
-        console.log('数据库初始化完成');
-    });
+        // 初始化数据库
+        dbManager.initialize().then(() => {
+            console.log('数据库初始化完成');
+        }).catch((error) => {
+            console.error('数据库初始化失败:', error);
+            vscode.window.showErrorMessage('Vibe Context Manager 初始化失败，请检查存储权限');
+        });
+
+    } catch (error) {
+        console.error('插件激活失败:', error);
+        vscode.window.showErrorMessage('Vibe Context Manager 激活失败');
+    }
 }
 
 async function openContextManager() {
@@ -56,7 +65,7 @@ async function openContextManager() {
     );
 
     panel.webview.html = getWebviewContent();
-    
+
     // 处理来自webview的消息
     panel.webview.onDidReceiveMessage(
         message => {
@@ -73,45 +82,62 @@ async function openContextManager() {
 }
 
 async function parseCurrentChat() {
-    const activeEditor = vscode.window.activeTextEditor;
-    if (!activeEditor) {
-        vscode.window.showWarningMessage('请先打开一个文件');
-        return;
-    }
-
-    const text = activeEditor.document.getText();
     try {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (!activeEditor) {
+            vscode.window.showWarningMessage('请先打开一个文件');
+            return;
+        }
+
+        const text = activeEditor.document.getText();
+        if (!text.trim()) {
+            vscode.window.showWarningMessage('文件内容为空');
+            return;
+        }
+
         await contextManager.parseAndStore(text);
         vscode.window.showInformationMessage('对话解析完成');
         contextTreeProvider.refresh();
     } catch (error) {
+        console.error('解析对话失败:', error);
         vscode.window.showErrorMessage(`解析失败: ${error}`);
     }
 }
 
 async function composeContext() {
-    const items = await contextManager.getRecentContexts(10);
-    const quickPickItems = items.map(item => ({
-        label: item.title,
-        description: item.timestamp.toLocaleDateString(),
-        detail: item.preview,
-        item: item
-    }));
+    try {
+        const items = await contextManager.getRecentContexts(10);
 
-    const selected = await vscode.window.showQuickPick(quickPickItems, {
-        canPickMany: true,
-        placeHolder: '选择要组合的上下文片段'
-    });
+        if (items.length === 0) {
+            vscode.window.showInformationMessage('暂无历史上下文，请先解析一些对话内容');
+            return;
+        }
 
-    if (selected && selected.length > 0) {
-        const composedText = selected.map(s => s.item.content).join('\n\n---\n\n');
-        
-        // 创建新文档显示组合结果
-        const doc = await vscode.workspace.openTextDocument({
-            content: composedText,
-            language: 'markdown'
+        const quickPickItems = items.map(item => ({
+            label: item.title,
+            description: item.timestamp.toLocaleDateString(),
+            detail: item.preview,
+            item: item
+        }));
+
+        const selected = await vscode.window.showQuickPick(quickPickItems, {
+            canPickMany: true,
+            placeHolder: '选择要组合的上下文片段'
         });
-        vscode.window.showTextDocument(doc);
+
+        if (selected && selected.length > 0) {
+            const composedText = selected.map(s => s.item.content).join('\n\n---\n\n');
+
+            // 创建新文档显示组合结果
+            const doc = await vscode.workspace.openTextDocument({
+                content: composedText,
+                language: 'markdown'
+            });
+            vscode.window.showTextDocument(doc);
+        }
+    } catch (error) {
+        console.error('组合上下文失败:', error);
+        vscode.window.showErrorMessage(`组合失败: ${error}`);
     }
 }
 
@@ -126,7 +152,7 @@ async function handleGetContextHistory(panel: vscode.WebviewPanel) {
 async function handleComposeContext(contextIds: string[]) {
     const contexts = await contextManager.getContextsByIds(contextIds);
     const composedText = contexts.map(c => c.content).join('\n\n---\n\n');
-    
+
     const doc = await vscode.workspace.openTextDocument({
         content: composedText,
         language: 'markdown'
