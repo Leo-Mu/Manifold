@@ -1,25 +1,58 @@
 import { ChatHistoryParser } from '../parsers/ChatHistoryParser';
 import { DatabaseManager } from '../storage/DatabaseManager';
 import { ContextItem, ParsedContent } from '../types/ContextTypes';
+import { IntelligentContextManager, IntelligentProcessingResult } from '../intelligence/IntelligentContextManager';
+import { AIProvider } from '../ai/AIProvider';
 
 export class ContextManager {
+    private intelligentManager?: IntelligentContextManager;
+    private intelligentMode: boolean = false;
+
     constructor(
         private dbManager: DatabaseManager,
-        private chatParser: ChatHistoryParser
-    ) {}
+        private chatParser: ChatHistoryParser,
+        aiProvider?: AIProvider
+    ) {
+        // 如果提供了AI提供商，启用智能模式
+        if (aiProvider) {
+            this.intelligentManager = new IntelligentContextManager(
+                dbManager,
+                chatParser,
+                aiProvider
+            );
+            this.intelligentMode = true;
+            console.log('智能上下文管理器已启用');
+        }
+    }
 
-    async parseAndStore(content: string): Promise<void> {
+    async parseAndStore(content: string): Promise<IntelligentProcessingResult | void> {
         try {
             console.log('开始解析内容，长度:', content.length);
-            const parsed = this.chatParser.parse(content);
             
-            console.log('解析结果:', {
-                codeBlocks: parsed.codeBlocks.length,
-                jsonBlocks: parsed.jsonBlocks.length,
-                qaBlocks: parsed.qaBlocks.length
-            });
-            
-            await this.storeContexts(parsed);
+            // 如果启用智能模式，使用智能处理
+            if (this.intelligentMode && this.intelligentManager) {
+                console.log('使用智能处理模式');
+                const result = await this.intelligentManager.intelligentParseAndStore(content);
+                console.log('智能处理完成:', {
+                    newItems: result.newItems.length,
+                    recommendations: result.recommendations.items.length,
+                    insights: result.insights.length,
+                    suggestions: result.reorganizationSuggestions.length
+                });
+                return result;
+            } else {
+                // 使用传统处理模式
+                console.log('使用传统处理模式');
+                const parsed = this.chatParser.parse(content);
+                
+                console.log('解析结果:', {
+                    codeBlocks: parsed.codeBlocks.length,
+                    jsonBlocks: parsed.jsonBlocks.length,
+                    qaBlocks: parsed.qaBlocks.length
+                });
+                
+                await this.storeContexts(parsed);
+            }
         } catch (error) {
             console.error('解析存储详细错误:', error);
             throw new Error(`解析存储失败: ${error}`);
@@ -102,11 +135,94 @@ export class ContextManager {
     }
 
     async searchContexts(query: string): Promise<ContextItem[]> {
-        return await this.dbManager.searchContexts(query);
+        // 如果启用智能模式，使用智能搜索
+        if (this.intelligentMode && this.intelligentManager) {
+            const result = await this.intelligentManager.intelligentSearch(query);
+            // 合并所有搜索结果
+            const allResults = [
+                ...result.directMatches,
+                ...result.semanticMatches,
+                ...result.recommendations.items.map(r => r.item)
+            ];
+            
+            // 去重并返回
+            const uniqueResults = this.deduplicateItems(allResults);
+            return uniqueResults.slice(0, 20); // 限制结果数量
+        } else {
+            return await this.dbManager.searchContexts(query);
+        }
     }
 
     async deleteContext(id: string): Promise<void> {
         await this.dbManager.deleteContext(id);
+    }
+
+    /**
+     * 获取智能推荐（仅在智能模式下可用）
+     */
+    async getIntelligentRecommendations(
+        query?: string,
+        currentContext?: ContextItem[],
+        maxResults?: number
+    ): Promise<any> {
+        if (this.intelligentMode && this.intelligentManager) {
+            return await this.intelligentManager.getIntelligentRecommendations(query, currentContext, maxResults);
+        }
+        return null;
+    }
+
+    /**
+     * 获取相关内容（仅在智能模式下可用）
+     */
+    async getRelatedContent(itemId: string, maxResults: number = 5): Promise<any> {
+        if (this.intelligentMode && this.intelligentManager) {
+            return await this.intelligentManager.getRelatedContent(itemId, maxResults);
+        }
+        return null;
+    }
+
+    /**
+     * 分析关系网络（仅在智能模式下可用）
+     */
+    async analyzeRelationshipNetwork(itemIds: string[]): Promise<any> {
+        if (this.intelligentMode && this.intelligentManager) {
+            return await this.intelligentManager.analyzeRelationshipNetwork(itemIds);
+        }
+        return null;
+    }
+
+    /**
+     * 获取处理统计信息
+     */
+    getProcessingStats(): any {
+        if (this.intelligentMode && this.intelligentManager) {
+            return this.intelligentManager.getProcessingStats();
+        }
+        return {
+            intelligentMode: false,
+            message: '智能模式未启用'
+        };
+    }
+
+    /**
+     * 检查是否启用智能模式
+     */
+    isIntelligentModeEnabled(): boolean {
+        return this.intelligentMode;
+    }
+
+    /**
+     * 去重项目
+     */
+    private deduplicateItems(items: ContextItem[]): ContextItem[] {
+        const seen = new Set<string>();
+        return items.filter(item => {
+            if (seen.has(item.id)) {
+                return false;
+            }
+            seen.add(item.id);
+            return true;
+        });
     }
 
     private generateId(): string {

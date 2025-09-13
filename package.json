@@ -84,6 +84,26 @@
         "command": "vibeContext.importAIConfigs",
         "title": "导入 AI 配置",
         "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.getIntelligentRecommendations",
+        "title": "获取智能推荐",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.analyzeRelationships",
+        "title": "分析内容关系",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.showProcessingStats",
+        "title": "显示处理统计",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.enableIntelligentMode",
+        "title": "启用智能模式",
+        "category": "Vibe Context"
       }
     ],
     "views": {
@@ -134,6 +154,16 @@
         "command": "vibeContext.chatWithContext",
         "key": "ctrl+k ctrl+a",
         "mac": "cmd+k cmd+a"
+      },
+      {
+        "command": "vibeContext.getIntelligentRecommendations",
+        "key": "ctrl+k ctrl+r",
+        "mac": "cmd+k cmd+r"
+      },
+      {
+        "command": "vibeContext.analyzeRelationships",
+        "key": "ctrl+k ctrl+n",
+        "mac": "cmd+k cmd+n"
       }
     ],
     "configuration": {

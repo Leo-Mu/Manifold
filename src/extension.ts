@@ -21,13 +21,28 @@ export function activate(context: vscode.ExtensionContext) {
         // 初始化核心组件
         const dbManager = new DatabaseManager(context.globalStorageUri.fsPath);
         const chatParser = new ChatHistoryParser();
-        contextManager = new ContextManager(dbManager, chatParser);
-        contextTreeProvider = new ContextTreeProvider(contextManager);
 
         // 初始化AI对话组件
         chatManager = new ChatManager(context);
         chatTreeProvider = new ChatTreeProvider(chatManager);
         aiConfigTreeProvider = new AIConfigTreeProvider(chatManager.getConfigManager());
+
+        // 初始化上下文管理器（如果有AI配置则启用智能模式）
+        const activeConfig = chatManager.getCurrentConfig();
+        if (activeConfig && activeConfig.apiKey) {
+            console.log('检测到AI配置，启用智能上下文管理');
+            const aiProvider = chatManager['aiProvider']; // 获取AI提供商实例
+            if (aiProvider) {
+                contextManager = new ContextManager(dbManager, chatParser, aiProvider);
+            } else {
+                contextManager = new ContextManager(dbManager, chatParser);
+            }
+        } else {
+            console.log('未检测到AI配置，使用传统上下文管理');
+            contextManager = new ContextManager(dbManager, chatParser);
+        }
+        
+        contextTreeProvider = new ContextTreeProvider(contextManager);
 
         // 注册树视图
         vscode.window.createTreeView('vibeContextTree', {
@@ -70,7 +85,13 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.commands.registerCommand('vibeContext.editAIConfig', editAIConfig),
             vscode.commands.registerCommand('vibeContext.exportAIConfigs', exportAIConfigs),
             vscode.commands.registerCommand('vibeContext.importAIConfigs', importAIConfigs),
-            vscode.commands.registerCommand('vibeContext.refreshAIConfigTree', () => aiConfigTreeProvider.refresh())
+            vscode.commands.registerCommand('vibeContext.refreshAIConfigTree', () => aiConfigTreeProvider.refresh()),
+
+            // 智能功能命令
+            vscode.commands.registerCommand('vibeContext.getIntelligentRecommendations', getIntelligentRecommendations),
+            vscode.commands.registerCommand('vibeContext.analyzeRelationships', analyzeRelationships),
+            vscode.commands.registerCommand('vibeContext.showProcessingStats', showProcessingStats),
+            vscode.commands.registerCommand('vibeContext.enableIntelligentMode', enableIntelligentMode)
         ];
 
         // 设置上下文
@@ -1602,6 +1623,312 @@ async function importAIConfigs() {
     } catch (error) {
         vscode.window.showErrorMessage(`导入配置失败: ${error}`);
     }
+}
+
+// 智能功能函数
+async function getIntelligentRecommendations() {
+    try {
+        if (!contextManager.isIntelligentModeEnabled()) {
+            vscode.window.showWarningMessage('智能模式未启用，请先配置AI提供商');
+            return;
+        }
+
+        const query = await vscode.window.showInputBox({
+            prompt: '请输入查询内容（可选）',
+            placeHolder: '留空将基于当前上下文推荐'
+        });
+
+        const recommendations = await contextManager.getIntelligentRecommendations(query, undefined, 10);
+        
+        if (recommendations && recommendations.items.length > 0) {
+            const panel = vscode.window.createWebviewPanel(
+                'intelligentRecommendations',
+                '智能推荐',
+                vscode.ViewColumn.One,
+                { enableScripts: true }
+            );
+
+            panel.webview.html = getRecommendationsWebviewContent(recommendations);
+        } else {
+            vscode.window.showInformationMessage('未找到相关推荐内容');
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`获取智能推荐失败: ${error}`);
+    }
+}
+
+async function analyzeRelationships() {
+    try {
+        if (!contextManager.isIntelligentModeEnabled()) {
+            vscode.window.showWarningMessage('智能模式未启用，请先配置AI提供商');
+            return;
+        }
+
+        const recentContexts = await contextManager.getRecentContexts(20);
+        if (recentContexts.length < 2) {
+            vscode.window.showInformationMessage('需要至少2个上下文项才能分析关系');
+            return;
+        }
+
+        const selectedItems = await vscode.window.showQuickPick(
+            recentContexts.map(item => ({
+                label: item.title,
+                description: item.preview,
+                picked: false,
+                item: item
+            })),
+            {
+                canPickMany: true,
+                placeHolder: '选择要分析关系的上下文项（至少选择2个）'
+            }
+        );
+
+        if (!selectedItems || selectedItems.length < 2) {
+            vscode.window.showWarningMessage('请至少选择2个上下文项');
+            return;
+        }
+
+        const itemIds = selectedItems.map(s => s.item.id);
+        const networkData = await contextManager.analyzeRelationshipNetwork(itemIds);
+
+        if (networkData) {
+            const panel = vscode.window.createWebviewPanel(
+                'relationshipNetwork',
+                '关系网络分析',
+                vscode.ViewColumn.One,
+                { enableScripts: true }
+            );
+
+            panel.webview.html = getNetworkWebviewContent(networkData);
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`关系分析失败: ${error}`);
+    }
+}
+
+async function showProcessingStats() {
+    try {
+        const stats = contextManager.getProcessingStats();
+        
+        const panel = vscode.window.createWebviewPanel(
+            'processingStats',
+            '处理统计信息',
+            vscode.ViewColumn.One,
+            { enableScripts: true }
+        );
+
+        panel.webview.html = getStatsWebviewContent(stats);
+    } catch (error) {
+        vscode.window.showErrorMessage(`获取统计信息失败: ${error}`);
+    }
+}
+
+async function enableIntelligentMode() {
+    try {
+        const currentConfig = chatManager.getCurrentConfig();
+        if (currentConfig && currentConfig.apiKey) {
+            vscode.window.showInformationMessage('智能模式已启用');
+            return;
+        }
+
+        const action = await vscode.window.showInformationMessage(
+            '智能模式需要配置AI提供商。是否现在配置？',
+            '配置AI',
+            '取消'
+        );
+
+        if (action === '配置AI') {
+            await configureAI();
+            
+            // 重新初始化上下文管理器
+            const newConfig = chatManager.getCurrentConfig();
+            if (newConfig && newConfig.apiKey) {
+                const aiProvider = chatManager['aiProvider'];
+                const dbManager = new DatabaseManager(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '');
+                const chatParser = new ChatHistoryParser();
+                if (aiProvider) {
+                    contextManager = new ContextManager(dbManager, chatParser, aiProvider);
+                } else {
+                    contextManager = new ContextManager(dbManager, chatParser);
+                }
+                contextTreeProvider = new ContextTreeProvider(contextManager);
+                
+                vscode.window.showInformationMessage('智能模式已启用！');
+            }
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`启用智能模式失败: ${error}`);
+    }
+}
+
+function getRecommendationsWebviewContent(recommendations: any): string {
+    const itemsHtml = recommendations.items.map((item: any) => `
+        <div class="recommendation-item">
+            <h3>${item.item.title}</h3>
+            <p class="score">相关度: ${(item.score * 100).toFixed(1)}%</p>
+            <p class="preview">${item.item.preview}</p>
+            <div class="reasons">
+                <strong>推荐原因:</strong>
+                <ul>
+                    ${item.reasons.map((reason: any) => `<li>${reason.description}</li>`).join('')}
+                </ul>
+            </div>
+        </div>
+    `).join('');
+
+    return `<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>智能推荐</title>
+        <style>
+            body { font-family: var(--vscode-font-family); padding: 20px; }
+            .recommendation-item { 
+                border: 1px solid var(--vscode-panel-border);
+                margin: 15px 0;
+                padding: 15px;
+                border-radius: 5px;
+            }
+            .score { color: var(--vscode-charts-blue); font-weight: bold; }
+            .preview { color: var(--vscode-descriptionForeground); }
+            .reasons { margin-top: 10px; }
+            .reasons ul { margin: 5px 0; }
+        </style>
+    </head>
+    <body>
+        <h1>智能推荐结果</h1>
+        <p><strong>推荐策略:</strong> ${recommendations.strategy}</p>
+        <p><strong>整体置信度:</strong> ${(recommendations.confidence * 100).toFixed(1)}%</p>
+        <p><strong>说明:</strong> ${recommendations.explanation}</p>
+        <hr>
+        ${itemsHtml}
+    </body>
+    </html>`;
+}
+
+function getNetworkWebviewContent(networkData: any): string {
+    const nodesHtml = networkData.nodes.map((node: any) => `
+        <div class="node-item">
+            <span class="node-label">${node.label}</span>
+            <span class="node-type">(${node.type})</span>
+        </div>
+    `).join('');
+
+    const edgesHtml = networkData.edges.map((edge: any) => `
+        <div class="edge-item">
+            <span>${edge.source} → ${edge.target}</span>
+            <span class="edge-weight">${(edge.weight * 100).toFixed(1)}%</span>
+            <span class="edge-type">(${edge.type})</span>
+        </div>
+    `).join('');
+
+    const insightsHtml = networkData.insights.map((insight: string) => `
+        <li>${insight}</li>
+    `).join('');
+
+    return `<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>关系网络分析</title>
+        <style>
+            body { font-family: var(--vscode-font-family); padding: 20px; }
+            .section { margin: 20px 0; }
+            .node-item, .edge-item { 
+                padding: 5px 10px;
+                margin: 5px 0;
+                background: var(--vscode-input-background);
+                border-radius: 3px;
+            }
+            .node-type, .edge-type { color: var(--vscode-descriptionForeground); }
+            .edge-weight { color: var(--vscode-charts-green); font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <h1>关系网络分析</h1>
+        
+        <div class="section">
+            <h2>网络节点 (${networkData.nodes.length})</h2>
+            ${nodesHtml}
+        </div>
+        
+        <div class="section">
+            <h2>关系连接 (${networkData.edges.length})</h2>
+            ${edgesHtml}
+        </div>
+        
+        <div class="section">
+            <h2>分析洞察</h2>
+            <ul>${insightsHtml}</ul>
+        </div>
+    </body>
+    </html>`;
+}
+
+function getStatsWebviewContent(stats: any): string {
+    if (!stats.intelligentMode) {
+        return `<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>处理统计</title>
+            <style>body { font-family: var(--vscode-font-family); padding: 20px; }</style>
+        </head>
+        <body>
+            <h1>处理统计信息</h1>
+            <p>智能模式未启用。请先配置AI提供商以启用智能功能。</p>
+        </body>
+        </html>`;
+    }
+
+    return `<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>处理统计</title>
+        <style>
+            body { font-family: var(--vscode-font-family); padding: 20px; }
+            .stat-item { 
+                padding: 10px;
+                margin: 10px 0;
+                background: var(--vscode-input-background);
+                border-radius: 5px;
+            }
+            .stat-value { color: var(--vscode-charts-blue); font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <h1>智能处理统计信息</h1>
+        
+        <div class="stat-item">
+            <strong>总处理数量:</strong> 
+            <span class="stat-value">${stats.totalProcessed}</span>
+        </div>
+        
+        <div class="stat-item">
+            <strong>平均处理时间:</strong> 
+            <span class="stat-value">${stats.averageProcessingTime.toFixed(2)}ms</span>
+        </div>
+        
+        <div class="stat-item">
+            <strong>向量存储统计:</strong>
+            <ul>
+                <li>总向量数: ${stats.vectorStats.totalVectors}</li>
+                <li>缓存大小: ${stats.vectorStats.cacheSize}</li>
+                <li>内存使用: ${(stats.vectorStats.memoryUsage / 1024 / 1024).toFixed(2)}MB</li>
+            </ul>
+        </div>
+        
+        <div class="stat-item">
+            <strong>推荐统计:</strong>
+            <ul>
+                <li>总推荐数: ${stats.recommendationStats.totalRecommendations}</li>
+                <li>平均置信度: ${(stats.recommendationStats.averageConfidence * 100).toFixed(1)}%</li>
+                <li>平均处理时间: ${stats.recommendationStats.averageProcessingTime.toFixed(2)}ms</li>
+            </ul>
+        </div>
+    </body>
+    </html>`;
 }
 
 export function deactivate() {
