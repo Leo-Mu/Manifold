@@ -54,6 +54,36 @@
         "command": "vibeContext.showContextStats",
         "title": "显示上下文统计",
         "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.switchAIConfig",
+        "title": "切换 AI 配置",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.deleteAIConfig",
+        "title": "删除 AI 配置",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.renameAIConfig",
+        "title": "重命名 AI 配置",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.editAIConfig",
+        "title": "编辑 AI 配置",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.exportAIConfigs",
+        "title": "导出 AI 配置",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.importAIConfigs",
+        "title": "导入 AI 配置",
+        "category": "Vibe Context"
       }
     ],
     "views": {
@@ -66,6 +96,11 @@
         {
           "id": "vibeChatTree",
           "name": "AI 对话",
+          "when": "vibeContext.enabled"
+        },
+        {
+          "id": "vibeAIConfigTree",
+          "name": "AI 配置管理",
           "when": "vibeContext.enabled"
         }
       ]
@@ -119,6 +154,47 @@
           "description": "AI 提供商配置（不包含敏感信息）"
         }
       }
+    },
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "vibeContext.switchAIConfig",
+          "when": "view == vibeAIConfigTree && viewItem == config",
+          "group": "inline"
+        },
+        {
+          "command": "vibeContext.renameAIConfig",
+          "when": "view == vibeAIConfigTree && viewItem == config",
+          "group": "edit@1"
+        },
+        {
+          "command": "vibeContext.editAIConfig",
+          "when": "view == vibeAIConfigTree && viewItem == config",
+          "group": "edit@2"
+        },
+        {
+          "command": "vibeContext.deleteAIConfig",
+          "when": "view == vibeAIConfigTree && viewItem == config",
+          "group": "edit@3"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "vibeContext.configureAI",
+          "when": "view == vibeAIConfigTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vibeContext.exportAIConfigs",
+          "when": "view == vibeAIConfigTree",
+          "group": "navigation@2"
+        },
+        {
+          "command": "vibeContext.importAIConfigs",
+          "when": "view == vibeAIConfigTree",
+          "group": "navigation@3"
+        }
+      ]
     }
   },
   "scripts": {

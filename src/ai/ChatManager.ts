@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AIProvider, AIConfig, ChatMessage, ChatResponse, createAIProvider } from './AIProvider';
+import { AIConfigManager, SavedAIConfig } from './AIConfigManager';
 import { ContextItem } from '../types/ContextTypes';
 
 export interface ChatSession {
@@ -15,22 +16,64 @@ export class ChatManager {
     private aiProvider: AIProvider | null = null;
     private currentSession: ChatSession | null = null;
     private sessions: ChatSession[] = [];
+    private configManager: AIConfigManager;
 
     constructor(private context: vscode.ExtensionContext) {
+        this.configManager = new AIConfigManager(context);
         this.loadSessions();
+        this.initializeFromSavedConfig();
     }
 
-    async initializeAI(config: AIConfig): Promise<void> {
+    getConfigManager(): AIConfigManager {
+        return this.configManager;
+    }
+
+    async initializeAI(config: AIConfig, configName?: string): Promise<string> {
         try {
             this.aiProvider = createAIProvider(config);
             
-            // 保存配置到工作区设置
-            await this.saveAIConfig(config);
+            // 保存配置
+            let configId: string;
+            if (configName) {
+                configId = await this.configManager.saveConfig(config, configName);
+                await this.configManager.setActiveConfig(configId);
+            } else {
+                // 如果没有提供名称，使用临时配置
+                configId = 'temp';
+            }
             
             vscode.window.showInformationMessage(`AI 提供商 ${config.provider} 初始化成功`);
+            return configId;
         } catch (error) {
             vscode.window.showErrorMessage(`AI 初始化失败: ${error}`);
             throw error;
+        }
+    }
+
+    async switchToConfig(configId: string): Promise<boolean> {
+        const config = await this.configManager.setActiveConfig(configId);
+        if (config) {
+            try {
+                this.aiProvider = createAIProvider(config);
+                vscode.window.showInformationMessage(`已切换到配置: ${config.name}`);
+                return true;
+            } catch (error) {
+                vscode.window.showErrorMessage(`切换配置失败: ${error}`);
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private async initializeFromSavedConfig(): Promise<void> {
+        const activeConfig = this.configManager.getActiveConfig();
+        if (activeConfig && activeConfig.apiKey) {
+            try {
+                this.aiProvider = createAIProvider(activeConfig);
+                console.log(`已加载保存的配置: ${activeConfig.name}`);
+            } catch (error) {
+                console.error('加载保存的配置失败:', error);
+            }
         }
     }
 
@@ -161,23 +204,12 @@ export class ChatManager {
         }
     }
 
-    private async saveAIConfig(config: AIConfig): Promise<void> {
-        // 不保存敏感信息到设置中，只保存非敏感配置
-        const safeConfig = {
-            provider: config.provider,
-            baseUrl: config.baseUrl,
-            model: config.model,
-            temperature: config.temperature,
-            maxTokens: config.maxTokens
-        };
-
-        const workspaceConfig = vscode.workspace.getConfiguration('vibeContext');
-        await workspaceConfig.update('aiConfig', safeConfig, vscode.ConfigurationTarget.Workspace);
+    getCurrentConfig(): SavedAIConfig | null {
+        return this.configManager.getActiveConfig();
     }
 
-    async getAIConfig(): Promise<Partial<AIConfig> | null> {
-        const workspaceConfig = vscode.workspace.getConfiguration('vibeContext');
-        return workspaceConfig.get('aiConfig') || null;
+    getAllConfigs(): SavedAIConfig[] {
+        return this.configManager.getAllConfigs();
     }
 
     private async saveSessions(): Promise<void> {

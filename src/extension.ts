@@ -3,6 +3,7 @@ import { ContextManager } from './core/ContextManager';
 import { ChatHistoryParser } from './parsers/ChatHistoryParser';
 import { ContextTreeProvider } from './providers/ContextTreeProvider';
 import { ChatTreeProvider } from './providers/ChatTreeProvider';
+import { AIConfigTreeProvider } from './providers/AIConfigTreeProvider';
 import { DatabaseManager } from './storage/DatabaseManager';
 import { ChatManager } from './ai/ChatManager';
 import { ContextItem } from './types/ContextTypes';
@@ -11,6 +12,7 @@ let contextManager: ContextManager;
 let contextTreeProvider: ContextTreeProvider;
 let chatManager: ChatManager;
 let chatTreeProvider: ChatTreeProvider;
+let aiConfigTreeProvider: AIConfigTreeProvider;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Vibe Context Manager 插件已激活');
@@ -25,6 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
         // 初始化AI对话组件
         chatManager = new ChatManager(context);
         chatTreeProvider = new ChatTreeProvider(chatManager);
+        aiConfigTreeProvider = new AIConfigTreeProvider(chatManager.getConfigManager());
 
         // 注册树视图
         vscode.window.createTreeView('vibeContextTree', {
@@ -34,6 +37,11 @@ export function activate(context: vscode.ExtensionContext) {
 
         vscode.window.createTreeView('vibeChatTree', {
             treeDataProvider: chatTreeProvider,
+            showCollapseAll: true
+        });
+
+        vscode.window.createTreeView('vibeAIConfigTree', {
+            treeDataProvider: aiConfigTreeProvider,
             showCollapseAll: true
         });
 
@@ -53,7 +61,16 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.commands.registerCommand('vibeContext.deleteChatSession', deleteChatSession),
             vscode.commands.registerCommand('vibeContext.chatWithContext', chatWithContext),
             vscode.commands.registerCommand('vibeContext.refreshChatTree', () => chatTreeProvider.refresh()),
-            vscode.commands.registerCommand('vibeContext.showContextStats', showContextStats)
+            vscode.commands.registerCommand('vibeContext.showContextStats', showContextStats),
+            
+            // AI 配置管理命令
+            vscode.commands.registerCommand('vibeContext.switchAIConfig', switchAIConfig),
+            vscode.commands.registerCommand('vibeContext.deleteAIConfig', deleteAIConfig),
+            vscode.commands.registerCommand('vibeContext.renameAIConfig', renameAIConfig),
+            vscode.commands.registerCommand('vibeContext.editAIConfig', editAIConfig),
+            vscode.commands.registerCommand('vibeContext.exportAIConfigs', exportAIConfigs),
+            vscode.commands.registerCommand('vibeContext.importAIConfigs', importAIConfigs),
+            vscode.commands.registerCommand('vibeContext.refreshAIConfigTree', () => aiConfigTreeProvider.refresh())
         ];
 
         // 设置上下文
@@ -346,8 +363,25 @@ ${config.baseUrl ? `API 地址: ${config.baseUrl}` : ''}
         );
 
         if (confirm === '保存配置') {
-            await chatManager.initializeAI(config);
-            chatTreeProvider.refresh();
+            // 询问配置名称
+            const configName = await vscode.window.showInputBox({
+                prompt: '请为此配置输入一个名称',
+                placeHolder: `${config.provider}-${config.model}`,
+                validateInput: (value) => {
+                    if (!value) return '配置名称不能为空';
+                    const existingConfigs = chatManager.getAllConfigs();
+                    if (existingConfigs.some(c => c.name === value)) {
+                        return '配置名称已存在，将会覆盖现有配置';
+                    }
+                    return null;
+                }
+            });
+
+            if (configName) {
+                await chatManager.initializeAI(config, configName);
+                chatTreeProvider.refresh();
+                aiConfigTreeProvider.refresh();
+            }
         } else if (confirm === '重新配置') {
             await configureAI(); // 递归重新配置
         }
@@ -957,6 +991,225 @@ ${allContexts.slice(0, 5).map(c => `- ${c.title} (${c.type})`).join('\n')}`;
         vscode.window.showInformationMessage(message, { modal: true });
     } catch (error) {
         vscode.window.showErrorMessage(`获取统计信息失败: ${error}`);
+    }
+}
+
+// AI 配置管理函数
+async function switchAIConfig(configId: string) {
+    try {
+        const success = await chatManager.switchToConfig(configId);
+        if (success) {
+            aiConfigTreeProvider.refresh();
+            chatTreeProvider.refresh();
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`切换配置失败: ${error}`);
+    }
+}
+
+async function deleteAIConfig(configId: string) {
+    try {
+        const config = chatManager.getConfigManager().getConfigById(configId);
+        if (!config) return;
+
+        const confirm = await vscode.window.showWarningMessage(
+            `确定要删除配置 "${config.name}" 吗？`,
+            '删除',
+            '取消'
+        );
+
+        if (confirm === '删除') {
+            await chatManager.getConfigManager().deleteConfig(configId);
+            aiConfigTreeProvider.refresh();
+            vscode.window.showInformationMessage(`配置 "${config.name}" 已删除`);
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`删除配置失败: ${error}`);
+    }
+}
+
+async function renameAIConfig(configId: string) {
+    try {
+        const config = chatManager.getConfigManager().getConfigById(configId);
+        if (!config) return;
+
+        const newName = await vscode.window.showInputBox({
+            prompt: '请输入新的配置名称',
+            value: config.name,
+            validateInput: (value) => {
+                if (!value) return '配置名称不能为空';
+                const existingConfigs = chatManager.getAllConfigs();
+                if (existingConfigs.some(c => c.name === value && c.id !== configId)) {
+                    return '配置名称已存在';
+                }
+                return null;
+            }
+        });
+
+        if (newName && newName !== config.name) {
+            await chatManager.getConfigManager().renameConfig(configId, newName);
+            aiConfigTreeProvider.refresh();
+            vscode.window.showInformationMessage(`配置已重命名为 "${newName}"`);
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`重命名配置失败: ${error}`);
+    }
+}
+
+async function editAIConfig(configId: string) {
+    try {
+        const config = chatManager.getConfigManager().getConfigById(configId);
+        if (!config) return;
+
+        // 显示编辑选项
+        const action = await vscode.window.showQuickPick([
+            { label: '更新 API Key', value: 'apiKey' },
+            { label: '更改模型', value: 'model' },
+            { label: '修改 API 地址', value: 'baseUrl' },
+            { label: '调整参数', value: 'params' }
+        ], {
+            placeHolder: '选择要编辑的内容'
+        });
+
+        if (!action) return;
+
+        let updated = false;
+
+        switch (action.value) {
+            case 'apiKey':
+                const newApiKey = await vscode.window.showInputBox({
+                    prompt: '请输入新的 API Key',
+                    password: true,
+                    placeHolder: '输入新的 API Key'
+                });
+                if (newApiKey) {
+                    await chatManager.getConfigManager().updateConfig(configId, { apiKey: newApiKey });
+                    updated = true;
+                }
+                break;
+
+            case 'model':
+                const newModel = await vscode.window.showInputBox({
+                    prompt: '请输入新的模型名称',
+                    value: config.model,
+                    placeHolder: '模型名称'
+                });
+                if (newModel && newModel !== config.model) {
+                    await chatManager.getConfigManager().updateConfig(configId, { model: newModel });
+                    updated = true;
+                }
+                break;
+
+            case 'baseUrl':
+                const newBaseUrl = await vscode.window.showInputBox({
+                    prompt: '请输入新的 API 地址',
+                    value: config.baseUrl || '',
+                    placeHolder: 'https://api.example.com/v1/chat/completions'
+                });
+                if (newBaseUrl !== config.baseUrl) {
+                    await chatManager.getConfigManager().updateConfig(configId, { baseUrl: newBaseUrl || undefined });
+                    updated = true;
+                }
+                break;
+
+            case 'params':
+                // 编辑温度和最大Token
+                const tempStr = await vscode.window.showInputBox({
+                    prompt: '请输入温度参数 (0.0-2.0)',
+                    value: config.temperature?.toString() || '0.7',
+                    validateInput: (value) => {
+                        const num = parseFloat(value);
+                        if (isNaN(num) || num < 0 || num > 2) {
+                            return '温度参数应该在 0.0 到 2.0 之间';
+                        }
+                        return null;
+                    }
+                });
+                
+                if (tempStr) {
+                    const maxTokensStr = await vscode.window.showInputBox({
+                        prompt: '请输入最大 Token 数量',
+                        value: config.maxTokens?.toString() || '2000',
+                        validateInput: (value) => {
+                            const num = parseInt(value);
+                            if (isNaN(num) || num < 1 || num > 32000) {
+                                return 'Token 数量应该在 1 到 32000 之间';
+                            }
+                            return null;
+                        }
+                    });
+                    
+                    if (maxTokensStr) {
+                        await chatManager.getConfigManager().updateConfig(configId, {
+                            temperature: parseFloat(tempStr),
+                            maxTokens: parseInt(maxTokensStr)
+                        });
+                        updated = true;
+                    }
+                }
+                break;
+        }
+
+        if (updated) {
+            aiConfigTreeProvider.refresh();
+            vscode.window.showInformationMessage('配置已更新');
+            
+            // 如果是当前激活的配置，重新初始化
+            const activeConfig = chatManager.getCurrentConfig();
+            if (activeConfig?.id === configId) {
+                await switchAIConfig(configId);
+            }
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`编辑配置失败: ${error}`);
+    }
+}
+
+async function exportAIConfigs() {
+    try {
+        const configs = chatManager.getConfigManager().exportConfigs();
+        if (configs.length === 0) {
+            vscode.window.showInformationMessage('没有可导出的配置');
+            return;
+        }
+
+        const content = JSON.stringify(configs, null, 2);
+        const doc = await vscode.workspace.openTextDocument({
+            content: content,
+            language: 'json'
+        });
+        
+        await vscode.window.showTextDocument(doc);
+        vscode.window.showInformationMessage(`已导出 ${configs.length} 个配置（不包含 API Key）`);
+    } catch (error) {
+        vscode.window.showErrorMessage(`导出配置失败: ${error}`);
+    }
+}
+
+async function importAIConfigs() {
+    try {
+        const input = await vscode.window.showInputBox({
+            prompt: '请粘贴配置 JSON 内容',
+            placeHolder: '粘贴从导出功能获得的 JSON 配置...'
+        });
+
+        if (!input) return;
+
+        const configs = JSON.parse(input);
+        if (!Array.isArray(configs)) {
+            throw new Error('配置格式不正确，应该是数组格式');
+        }
+
+        const importedCount = await chatManager.getConfigManager().importConfigs(configs);
+        
+        if (importedCount > 0) {
+            aiConfigTreeProvider.refresh();
+            vscode.window.showInformationMessage(`成功导入 ${importedCount} 个配置，请为每个配置重新设置 API Key`);
+        } else {
+            vscode.window.showWarningMessage('没有有效的配置可导入');
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`导入配置失败: ${error}`);
     }
 }
 
