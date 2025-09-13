@@ -23,7 +23,7 @@ export function activate(context: vscode.ExtensionContext) {
         const chatParser = new ChatHistoryParser();
         contextManager = new ContextManager(dbManager, chatParser);
         contextTreeProvider = new ContextTreeProvider(contextManager);
-        
+
         // 初始化AI对话组件
         chatManager = new ChatManager(context);
         chatTreeProvider = new ChatTreeProvider(chatManager);
@@ -52,7 +52,7 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.commands.registerCommand('vibeContext.composeContext', composeContext),
             vscode.commands.registerCommand('vibeContext.refreshTree', () => contextTreeProvider.refresh()),
             vscode.commands.registerCommand('vibeContext.openContext', openContext),
-            
+
             // AI 对话命令
             vscode.commands.registerCommand('vibeContext.configureAI', configureAI),
             vscode.commands.registerCommand('vibeContext.openChatInterface', openChatInterface),
@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.commands.registerCommand('vibeContext.chatWithContext', chatWithContext),
             vscode.commands.registerCommand('vibeContext.refreshChatTree', () => chatTreeProvider.refresh()),
             vscode.commands.registerCommand('vibeContext.showContextStats', showContextStats),
-            
+
             // AI 配置管理命令
             vscode.commands.registerCommand('vibeContext.switchAIConfig', switchAIConfig),
             vscode.commands.registerCommand('vibeContext.deleteAIConfig', deleteAIConfig),
@@ -139,19 +139,19 @@ async function parseCurrentChat() {
         console.log('文件内容长度:', text.length);
 
         await contextManager.parseAndStore(text);
-        
+
         // 获取解析结果统计
         const recentContexts = await contextManager.getRecentContexts(10);
-        const newContexts = recentContexts.filter(ctx => 
+        const newContexts = recentContexts.filter(ctx =>
             Date.now() - ctx.timestamp.getTime() < 5000 // 最近5秒内的
         );
-        
+
         vscode.window.showInformationMessage(
             `解析完成！新增 ${newContexts.length} 个上下文项`
         );
-        
+
         contextTreeProvider.refresh();
-        
+
         // 如果有新内容，显示详情
         if (newContexts.length > 0) {
             console.log('新增上下文:', newContexts.map(c => c.title));
@@ -305,20 +305,20 @@ async function configureAI() {
     try {
         // 第一步：选择提供商
         const provider = await vscode.window.showQuickPick([
-            { 
-                label: 'OpenAI', 
+            {
+                label: 'OpenAI',
                 value: 'openai',
                 description: '使用 OpenAI GPT 模型',
                 detail: '支持 GPT-3.5-turbo, GPT-4 等模型'
             },
-            { 
-                label: 'Anthropic (Claude)', 
+            {
+                label: 'Anthropic (Claude)',
                 value: 'anthropic',
                 description: '使用 Anthropic Claude 模型',
                 detail: '支持 Claude-3 系列模型'
             },
-            { 
-                label: '自定义 API', 
+            {
+                label: '自定义 API',
                 value: 'custom',
                 description: '使用兼容 OpenAI 格式的自定义 API',
                 detail: '需要提供完整的 API 端点地址'
@@ -608,7 +608,7 @@ async function openChatInterface() {
     );
 
     panel.webview.html = getChatWebviewContent();
-    
+
     // 处理来自webview的消息
     panel.webview.onDidReceiveMessage(async (message) => {
         switch (message.command) {
@@ -626,18 +626,18 @@ async function openChatInterface() {
 }
 
 async function handleSendMessage(
-    panel: vscode.WebviewPanel, 
-    userMessage: string, 
+    panel: vscode.WebviewPanel,
+    userMessage: string,
     contextIds: string[] = [],
     systemPrompt?: string
 ) {
     try {
         // 获取选中的上下文
         const contextItems = await contextManager.getContextsByIds(contextIds);
-        
+
         // 发送消息到AI
         const response = await chatManager.sendMessage(userMessage, contextItems, systemPrompt);
-        
+
         // 返回响应
         panel.webview.postMessage({
             command: 'messageResponse',
@@ -687,7 +687,7 @@ async function deleteChatSession(sessionId: string) {
         '删除',
         '取消'
     );
-    
+
     if (confirm === '删除') {
         await chatManager.deleteSession(sessionId);
         chatTreeProvider.refresh();
@@ -731,7 +731,7 @@ async function chatWithContext() {
         // 发送消息
         const contextItems = selectedContexts.map(s => s.context);
         const response = await chatManager.sendMessage(userMessage, contextItems);
-        
+
         // 显示结果
         const doc = await vscode.workspace.openTextDocument({
             content: `# 问题\n${userMessage}\n\n# 回答\n${response.content}\n\n# 使用的上下文\n${contextItems.map(c => `- ${c.title}`).join('\n')}`,
@@ -753,94 +753,269 @@ function getChatWebviewContent(): string {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>AI 对话</title>
         <style>
-            body { 
+            * {
+                box-sizing: border-box;
+            }
+            
+            html, body { 
+                height: 100%;
+                margin: 0;
+                padding: 0;
                 font-family: var(--vscode-font-family); 
-                padding: 20px;
                 background: var(--vscode-editor-background);
                 color: var(--vscode-editor-foreground);
+                overflow: hidden;
             }
-            .chat-container { max-width: 800px; margin: 0 auto; }
+            
+            .chat-layout {
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+                max-width: 800px;
+                margin: 0 auto;
+            }
+            
+            .chat-header {
+                flex-shrink: 0;
+                padding: 15px 20px 10px;
+                border-bottom: 1px solid var(--vscode-panel-border);
+            }
+            
+            .chat-header h2 {
+                margin: 0;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            
+            .chat-history-container {
+                flex: 1;
+                overflow-y: auto;
+                padding: 15px 20px;
+                scroll-behavior: smooth;
+            }
+            
             .message { 
-                margin: 10px 0; 
-                padding: 12px; 
+                margin: 15px 0; 
+                padding: 12px 16px; 
                 border-radius: 8px; 
                 border-left: 4px solid var(--vscode-activityBarBadge-background);
+                word-wrap: break-word;
+                line-height: 1.5;
             }
+            
             .user-message { 
                 background: var(--vscode-input-background);
                 border-left-color: var(--vscode-charts-blue);
+                margin-left: 20px;
             }
+            
             .assistant-message { 
                 background: var(--vscode-textBlockQuote-background);
                 border-left-color: var(--vscode-charts-green);
+                margin-right: 20px;
             }
+            
+            .message strong {
+                display: block;
+                margin-bottom: 8px;
+                font-weight: 600;
+            }
+            
             .input-area { 
-                position: fixed; 
-                bottom: 20px; 
-                left: 20px; 
-                right: 20px; 
+                flex-shrink: 0;
                 background: var(--vscode-editor-background);
-                padding: 15px;
+                padding: 15px 20px;
                 border-top: 1px solid var(--vscode-panel-border);
+                box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
             }
-            .input-row { display: flex; gap: 10px; margin-bottom: 10px; }
-            #messageInput { 
-                flex: 1; 
-                padding: 8px; 
+            
+            .context-selector { 
+                margin-bottom: 12px; 
+            }
+            
+            .context-selector strong {
+                display: block;
+                margin-bottom: 8px;
+                font-size: 13px;
+                color: var(--vscode-descriptionForeground);
+            }
+            
+            .context-list {
+                max-height: 80px;
+                overflow-y: auto;
                 border: 1px solid var(--vscode-input-border);
+                border-radius: 4px;
+                padding: 8px;
                 background: var(--vscode-input-background);
-                color: var(--vscode-input-foreground);
             }
-            button { 
-                padding: 8px 16px; 
-                background: var(--vscode-button-background);
-                color: var(--vscode-button-foreground);
-                border: none;
-                cursor: pointer;
-            }
-            button:hover { background: var(--vscode-button-hoverBackground); }
-            .context-selector { margin-bottom: 10px; }
+            
             .context-item { 
                 display: inline-block; 
                 margin: 2px; 
                 padding: 4px 8px; 
                 background: var(--vscode-badge-background);
                 color: var(--vscode-badge-foreground);
-                border-radius: 4px;
-                font-size: 12px;
+                border-radius: 12px;
+                font-size: 11px;
                 cursor: pointer;
+                transition: all 0.2s ease;
+                user-select: none;
             }
-            .context-item.selected { background: var(--vscode-list-activeSelectionBackground); }
+            
+            .context-item:hover {
+                background: var(--vscode-list-hoverBackground);
+            }
+            
+            .context-item.selected { 
+                background: var(--vscode-list-activeSelectionBackground);
+                color: var(--vscode-list-activeSelectionForeground);
+            }
+            
             .system-prompt { 
                 width: 100%; 
                 height: 60px; 
-                margin-bottom: 10px;
-                padding: 8px;
+                margin-bottom: 12px;
+                padding: 8px 12px;
                 border: 1px solid var(--vscode-input-border);
+                border-radius: 4px;
                 background: var(--vscode-input-background);
                 color: var(--vscode-input-foreground);
+                font-family: var(--vscode-font-family);
+                font-size: 13px;
+                resize: vertical;
+                min-height: 40px;
+                max-height: 120px;
             }
-            .loading { opacity: 0.6; }
+            
+            .system-prompt:focus {
+                outline: 1px solid var(--vscode-focusBorder);
+                border-color: var(--vscode-focusBorder);
+            }
+            
+            .input-row { 
+                display: flex; 
+                gap: 10px; 
+                align-items: flex-end;
+            }
+            
+            #messageInput { 
+                flex: 1; 
+                padding: 10px 12px; 
+                border: 1px solid var(--vscode-input-border);
+                border-radius: 4px;
+                background: var(--vscode-input-background);
+                color: var(--vscode-input-foreground);
+                font-family: var(--vscode-font-family);
+                font-size: 14px;
+                min-height: 40px;
+                resize: none;
+            }
+            
+            #messageInput:focus {
+                outline: 1px solid var(--vscode-focusBorder);
+                border-color: var(--vscode-focusBorder);
+            }
+            
+            button { 
+                padding: 10px 16px; 
+                background: var(--vscode-button-background);
+                color: var(--vscode-button-foreground);
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-family: var(--vscode-font-family);
+                font-size: 13px;
+                font-weight: 500;
+                transition: background-color 0.2s ease;
+                min-height: 40px;
+            }
+            
+            button:hover { 
+                background: var(--vscode-button-hoverBackground); 
+            }
+            
+            button:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+            
+            .loading { 
+                opacity: 0.7; 
+            }
+            
+            .loading .input-area {
+                pointer-events: none;
+            }
+            
+            /* 滚动条样式 */
+            .chat-history-container::-webkit-scrollbar,
+            .context-list::-webkit-scrollbar {
+                width: 8px;
+            }
+            
+            .chat-history-container::-webkit-scrollbar-track,
+            .context-list::-webkit-scrollbar-track {
+                background: var(--vscode-scrollbarSlider-background);
+            }
+            
+            .chat-history-container::-webkit-scrollbar-thumb,
+            .context-list::-webkit-scrollbar-thumb {
+                background: var(--vscode-scrollbarSlider-hoverBackground);
+                border-radius: 4px;
+            }
+            
+            /* 空状态样式 */
+            .empty-state {
+                text-align: center;
+                padding: 40px 20px;
+                color: var(--vscode-descriptionForeground);
+            }
+            
+            .empty-state h3 {
+                margin: 0 0 10px;
+                font-size: 16px;
+                font-weight: 500;
+            }
+            
+            .empty-state p {
+                margin: 0;
+                font-size: 13px;
+                line-height: 1.4;
+            }
         </style>
     </head>
     <body>
-        <div class="chat-container">
-            <h2>🤖 AI 对话助手</h2>
-            <div id="chatHistory"></div>
-        </div>
-        
-        <div class="input-area">
-            <div class="context-selector">
-                <strong>选择上下文:</strong>
-                <div id="contextList"></div>
+        <div class="chat-layout">
+            <div class="chat-header">
+                <h2>🤖 AI 对话助手</h2>
             </div>
             
-            <textarea id="systemPrompt" class="system-prompt" placeholder="系统提示词（可选）..."></textarea>
+            <div class="chat-history-container">
+                <div id="chatHistory">
+                    <div class="empty-state">
+                        <h3>开始新的对话</h3>
+                        <p>选择上下文并输入您的问题，AI 助手将为您提供帮助</p>
+                    </div>
+                </div>
+            </div>
             
-            <div class="input-row">
-                <input type="text" id="messageInput" placeholder="输入您的消息..." />
-                <button onclick="sendMessage()">发送</button>
-                <button onclick="clearChat()">清空</button>
+            <div class="input-area">
+                <div class="context-selector">
+                    <strong>选择上下文</strong>
+                    <div class="context-list" id="contextList">
+                        <div style="color: var(--vscode-descriptionForeground); font-size: 12px; padding: 4px;">
+                            正在加载上下文...
+                        </div>
+                    </div>
+                </div>
+                
+                <textarea id="systemPrompt" class="system-prompt" placeholder="系统提示词（可选）..."></textarea>
+                
+                <div class="input-row">
+                    <textarea id="messageInput" placeholder="输入您的消息..." rows="1"></textarea>
+                    <button id="sendButton" onclick="sendMessage()">发送</button>
+                    <button onclick="clearChat()">清空</button>
+                </div>
             </div>
         </div>
         
@@ -874,8 +1049,13 @@ function getChatWebviewContent(): string {
             
             function renderContextList(contexts) {
                 const listEl = document.getElementById('contextList');
+                if (contexts.length === 0) {
+                    listEl.innerHTML = '<div style="color: var(--vscode-descriptionForeground); font-size: 12px; padding: 4px;">暂无可用上下文</div>';
+                    return;
+                }
+                
                 listEl.innerHTML = contexts.map(ctx => 
-                    \`<span class="context-item" onclick="toggleContext('\${ctx.id}')" data-id="\${ctx.id}">
+                    \`<span class="context-item" onclick="toggleContext('\${ctx.id}')" data-id="\${ctx.id}" title="\${ctx.preview || ctx.content.substring(0, 100)}...">
                         \${ctx.title}
                     </span>\`
                 ).join('');
@@ -894,13 +1074,42 @@ function getChatWebviewContent(): string {
             
             function renderChatHistory(messages) {
                 const historyEl = document.getElementById('chatHistory');
+                const container = historyEl.parentElement;
+                
+                if (messages.length === 0) {
+                    historyEl.innerHTML = \`
+                        <div class="empty-state">
+                            <h3>开始新的对话</h3>
+                            <p>选择上下文并输入您的问题，AI 助手将为您提供帮助</p>
+                        </div>
+                    \`;
+                    return;
+                }
+                
                 historyEl.innerHTML = messages.map(msg => 
                     \`<div class="message \${msg.role}-message">
-                        <strong>\${msg.role === 'user' ? '👤 您' : '🤖 助手'}:</strong><br>
-                        \${msg.content.replace(/\\n/g, '<br>')}
+                        <strong>\${msg.role === 'user' ? '👤 您' : '🤖 助手'}</strong>
+                        <div>\${formatMessageContent(msg.content)}</div>
                     </div>\`
                 ).join('');
-                historyEl.scrollTop = historyEl.scrollHeight;
+                
+                // 滚动到底部
+                setTimeout(() => {
+                    container.scrollTop = container.scrollHeight;
+                }, 100);
+            }
+            
+            function formatMessageContent(content) {
+                // 处理代码块
+                content = content.replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, '<pre style="background: var(--vscode-textCodeBlock-background); padding: 8px; border-radius: 4px; overflow-x: auto; margin: 8px 0;"><code>$1</code></pre>');
+                
+                // 处理行内代码
+                content = content.replace(/\`([^\`]+)\`/g, '<code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px; font-family: var(--vscode-editor-font-family);">$1</code>');
+                
+                // 处理换行
+                content = content.replace(/\\\\n/g, '<br>');
+                
+                return content;
             }
             
             function sendMessage() {
@@ -908,18 +1117,38 @@ function getChatWebviewContent(): string {
                 
                 const messageInput = document.getElementById('messageInput');
                 const systemPrompt = document.getElementById('systemPrompt');
+                const sendButton = document.getElementById('sendButton');
                 const text = messageInput.value.trim();
                 
                 if (!text) return;
                 
                 isLoading = true;
                 document.body.classList.add('loading');
+                sendButton.disabled = true;
+                sendButton.textContent = '发送中...';
                 
-                // 添加用户消息到界面
+                // 清除空状态并添加用户消息到界面
                 const historyEl = document.getElementById('chatHistory');
+                const container = historyEl.parentElement;
+                
+                // 如果是第一条消息，清除空状态
+                if (historyEl.querySelector('.empty-state')) {
+                    historyEl.innerHTML = '';
+                }
+                
                 historyEl.innerHTML += \`<div class="message user-message">
-                    <strong>👤 您:</strong><br>\${text.replace(/\\n/g, '<br>')}
+                    <strong>👤 您</strong>
+                    <div>\${formatMessageContent(text)}</div>
                 </div>\`;
+                
+                // 添加加载指示器
+                historyEl.innerHTML += \`<div class="message assistant-message loading-message">
+                    <strong>🤖 助手</strong>
+                    <div>正在思考中...</div>
+                </div>\`;
+                
+                // 滚动到底部
+                container.scrollTop = container.scrollHeight;
                 
                 vscode.postMessage({
                     command: 'sendMessage',
@@ -929,41 +1158,106 @@ function getChatWebviewContent(): string {
                 });
                 
                 messageInput.value = '';
+                adjustTextareaHeight(messageInput);
             }
             
             function handleMessageResponse(response, usage) {
                 isLoading = false;
                 document.body.classList.remove('loading');
                 
+                const sendButton = document.getElementById('sendButton');
+                sendButton.disabled = false;
+                sendButton.textContent = '发送';
+                
                 const historyEl = document.getElementById('chatHistory');
+                const container = historyEl.parentElement;
+                
+                // 移除加载指示器
+                const loadingMessage = historyEl.querySelector('.loading-message');
+                if (loadingMessage) {
+                    loadingMessage.remove();
+                }
+                
+                // 添加助手回复
                 historyEl.innerHTML += \`<div class="message assistant-message">
-                    <strong>🤖 助手:</strong><br>\${response.replace(/\\n/g, '<br>')}
-                    \${usage ? \`<br><small>Token 使用: \${usage.totalTokens}</small>\` : ''}
+                    <strong>🤖 助手</strong>
+                    <div>\${formatMessageContent(response)}</div>
+                    \${usage ? \`<div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">Token 使用: \${usage.totalTokens}</div>\` : ''}
                 </div>\`;
-                historyEl.scrollTop = historyEl.scrollHeight;
+                
+                // 滚动到底部
+                setTimeout(() => {
+                    container.scrollTop = container.scrollHeight;
+                }, 100);
             }
             
             function handleMessageError(error) {
                 isLoading = false;
                 document.body.classList.remove('loading');
                 
+                const sendButton = document.getElementById('sendButton');
+                sendButton.disabled = false;
+                sendButton.textContent = '发送';
+                
                 const historyEl = document.getElementById('chatHistory');
+                const container = historyEl.parentElement;
+                
+                // 移除加载指示器
+                const loadingMessage = historyEl.querySelector('.loading-message');
+                if (loadingMessage) {
+                    loadingMessage.remove();
+                }
+                
+                // 添加错误消息
                 historyEl.innerHTML += \`<div class="message assistant-message" style="border-left-color: var(--vscode-charts-red);">
-                    <strong>❌ 错误:</strong><br>\${error}
+                    <strong>❌ 错误</strong>
+                    <div>\${error}</div>
                 </div>\`;
+                
+                // 滚动到底部
+                setTimeout(() => {
+                    container.scrollTop = container.scrollHeight;
+                }, 100);
             }
             
             function clearChat() {
-                document.getElementById('chatHistory').innerHTML = '';
+                const historyEl = document.getElementById('chatHistory');
+                historyEl.innerHTML = \`
+                    <div class="empty-state">
+                        <h3>开始新的对话</h3>
+                        <p>选择上下文并输入您的问题，AI 助手将为您提供帮助</p>
+                    </div>
+                \`;
             }
             
-            // 回车发送
-            document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            function adjustTextareaHeight(textarea) {
+                textarea.style.height = 'auto';
+                const maxHeight = 120; // 最大高度
+                const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+                textarea.style.height = newHeight + 'px';
+            }
+            
+            // 设置输入框事件
+            const messageInput = document.getElementById('messageInput');
+            
+            // 回车发送，Shift+回车换行
+            messageInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     sendMessage();
+                } else if (e.key === 'Enter' && e.shiftKey) {
+                    // 允许换行，调整高度
+                    setTimeout(() => adjustTextareaHeight(this), 0);
                 }
             });
+            
+            // 输入时自动调整高度
+            messageInput.addEventListener('input', function() {
+                adjustTextareaHeight(this);
+            });
+            
+            // 初始化输入框高度
+            adjustTextareaHeight(messageInput);
         </script>
     </body>
     </html>`;
@@ -1125,7 +1419,7 @@ async function editAIConfig(configId: string) {
                         return null;
                     }
                 });
-                
+
                 if (tempStr) {
                     const maxTokensStr = await vscode.window.showInputBox({
                         prompt: '请输入最大 Token 数量',
@@ -1138,7 +1432,7 @@ async function editAIConfig(configId: string) {
                             return null;
                         }
                     });
-                    
+
                     if (maxTokensStr) {
                         await chatManager.getConfigManager().updateConfig(configId, {
                             temperature: parseFloat(tempStr),
@@ -1153,7 +1447,7 @@ async function editAIConfig(configId: string) {
         if (updated) {
             aiConfigTreeProvider.refresh();
             vscode.window.showInformationMessage('配置已更新');
-            
+
             // 如果是当前激活的配置，重新初始化
             const activeConfig = chatManager.getCurrentConfig();
             if (activeConfig?.id === configId) {
@@ -1178,7 +1472,7 @@ async function exportAIConfigs() {
             content: content,
             language: 'json'
         });
-        
+
         await vscode.window.showTextDocument(doc);
         vscode.window.showInformationMessage(`已导出 ${configs.length} 个配置（不包含 API Key）`);
     } catch (error) {
@@ -1201,7 +1495,7 @@ async function importAIConfigs() {
         }
 
         const importedCount = await chatManager.getConfigManager().importConfigs(configs);
-        
+
         if (importedCount > 0) {
             aiConfigTreeProvider.refresh();
             vscode.window.showInformationMessage(`成功导入 ${importedCount} 个配置，请为每个配置重新设置 API Key`);
