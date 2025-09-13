@@ -4,6 +4,31 @@
 
 Vibe Context Manager 现在具备了强大的AI驱动智能功能，能够自动分析、理解和组织您的聊天记录，提供智能推荐和洞察。
 
+## ⚡ 快速配置
+
+### 1. 配置 AI 提供商和 Embedding
+
+使用命令面板 (`Ctrl+Shift+P`) 执行：
+```
+Vibe Context: 配置 AI 提供商
+```
+
+**重要**: 选择"启用智能功能"来配置 Embedding 模型：
+
+**OpenAI 配置**（推荐）:
+- 聊天模型: GPT-4 或 GPT-3.5-turbo
+- Embedding 模型: text-embedding-ada-002
+- 使用相同的 API Key
+
+**Anthropic 配置**:
+- 聊天模型: Claude-3-Sonnet
+- Embedding 服务: 需要额外配置 OpenAI Embedding
+
+**自定义 API**:
+- 需要同时配置聊天和 Embedding 端点
+
+详细配置指南请参考: [Embedding 配置指南](EMBEDDING_CONFIGURATION_GUIDE.md)
+
 ## 🚀 启用智能模式
 
 ### 自动启用

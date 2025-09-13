@@ -474,11 +474,51 @@ async function configureOpenAI(config: any) {
         modelName = customModel;
     }
 
+    // 询问是否启用智能功能
+    const enableIntelligent = await vscode.window.showQuickPick([
+        { label: '启用智能功能（推荐）', value: true, description: '启用语义搜索、智能推荐等功能' },
+        { label: '仅使用基础功能', value: false, description: '只使用聊天功能，不启用智能分析' }
+    ], {
+        placeHolder: '是否启用智能功能？'
+    });
+
+    let embeddingConfig = {};
+    if (enableIntelligent?.value) {
+        // Embedding 配置
+        const embeddingModel = await vscode.window.showQuickPick([
+            { label: 'text-embedding-ada-002', description: '推荐的embedding模型' },
+            { label: 'text-embedding-3-small', description: '更新的小型embedding模型' },
+            { label: 'text-embedding-3-large', description: '更新的大型embedding模型' },
+            { label: '自定义模型', value: 'custom' }
+        ], {
+            placeHolder: '选择 Embedding 模型'
+        });
+
+        let embeddingModelName = embeddingModel?.label || 'text-embedding-ada-002';
+        if (embeddingModel?.value === 'custom') {
+            const customEmbeddingModel = await vscode.window.showInputBox({
+                prompt: '请输入自定义 Embedding 模型名称',
+                placeHolder: 'text-embedding-custom'
+            });
+            if (customEmbeddingModel) {
+                embeddingModelName = customEmbeddingModel;
+            }
+        }
+
+        embeddingConfig = {
+            enableEmbedding: true,
+            embeddingModel: embeddingModelName,
+            embeddingApiKey: apiKey, // 使用相同的API Key
+            embeddingBaseUrl: baseUrl ? baseUrl.replace('/chat/completions', '/embeddings') : undefined
+        };
+    }
+
     return {
         ...config,
         apiKey,
         baseUrl,
-        model: modelName
+        model: modelName,
+        ...embeddingConfig
     };
 }
 
@@ -517,10 +557,52 @@ async function configureAnthropic(config: any) {
         modelName = customModel;
     }
 
+    // 询问是否启用智能功能
+    const enableIntelligent = await vscode.window.showQuickPick([
+        { label: '启用智能功能（推荐）', value: true, description: '启用语义搜索、智能推荐等功能' },
+        { label: '仅使用基础功能', value: false, description: '只使用聊天功能，不启用智能分析' }
+    ], {
+        placeHolder: '是否启用智能功能？'
+    });
+
+    let embeddingConfig = {};
+    if (enableIntelligent?.value) {
+        vscode.window.showInformationMessage('Claude 需要配置额外的 Embedding 服务（推荐使用 OpenAI）');
+        
+        // 询问embedding服务配置
+        const embeddingApiKey = await vscode.window.showInputBox({
+            prompt: '请输入 Embedding API Key（通常使用 OpenAI）',
+            password: true,
+            placeHolder: 'sk-...',
+            validateInput: (value) => {
+                if (!value) return 'Embedding API Key 不能为空';
+                return null;
+            }
+        });
+
+        if (embeddingApiKey) {
+            const embeddingModel = await vscode.window.showQuickPick([
+                { label: 'text-embedding-ada-002', description: 'OpenAI 推荐的embedding模型' },
+                { label: 'text-embedding-3-small', description: '更新的小型embedding模型' },
+                { label: 'text-embedding-3-large', description: '更新的大型embedding模型' }
+            ], {
+                placeHolder: '选择 Embedding 模型'
+            });
+
+            embeddingConfig = {
+                enableEmbedding: true,
+                embeddingModel: embeddingModel?.label || 'text-embedding-ada-002',
+                embeddingApiKey: embeddingApiKey,
+                embeddingBaseUrl: 'https://api.openai.com/v1/embeddings'
+            };
+        }
+    }
+
     return {
         ...config,
         apiKey,
-        model: modelName
+        model: modelName,
+        ...embeddingConfig
     };
 }
 
@@ -566,6 +648,62 @@ async function configureCustomAPI(config: any) {
         }
     });
     if (!model) return null;
+
+    // 询问是否启用智能功能
+    const enableIntelligent = await vscode.window.showQuickPick([
+        { label: '启用智能功能（推荐）', value: true, description: '启用语义搜索、智能推荐等功能' },
+        { label: '仅使用基础功能', value: false, description: '只使用聊天功能，不启用智能分析' }
+    ], {
+        placeHolder: '是否启用智能功能？'
+    });
+
+    let embeddingConfig = {};
+    if (enableIntelligent?.value) {
+        // Embedding API 配置
+        const embeddingUrl = await vscode.window.showInputBox({
+            prompt: '请输入 Embedding API 地址',
+            placeHolder: 'https://api.example.com/v1/embeddings',
+            validateInput: (value) => {
+                if (!value) return 'Embedding API 地址不能为空';
+                try {
+                    new URL(value);
+                    return null;
+                } catch {
+                    return '请输入有效的 URL 地址';
+                }
+            }
+        });
+
+        if (embeddingUrl) {
+            const embeddingApiKey = await vscode.window.showInputBox({
+                prompt: '请输入 Embedding API Key（可与聊天API相同）',
+                password: true,
+                value: apiKey,
+                validateInput: (value) => {
+                    if (!value) return 'Embedding API Key 不能为空';
+                    return null;
+                }
+            });
+
+            const embeddingModel = await vscode.window.showInputBox({
+                prompt: '请输入 Embedding 模型名称',
+                placeHolder: 'text-embedding-ada-002',
+                validateInput: (value) => {
+                    if (!value) return 'Embedding 模型名称不能为空';
+                    return null;
+                }
+            });
+
+            if (embeddingApiKey && embeddingModel) {
+                embeddingConfig = {
+                    enableEmbedding: true,
+                    embeddingModel: embeddingModel,
+                    embeddingApiKey: embeddingApiKey,
+                    embeddingBaseUrl: embeddingUrl
+                };
+            }
+        }
+    }
 
     // 高级配置
     const advancedConfig = await vscode.window.showQuickPick([
@@ -613,7 +751,8 @@ async function configureCustomAPI(config: any) {
         ...config,
         apiKey,
         baseUrl,
-        model
+        model,
+        ...embeddingConfig
     };
 }
 

@@ -273,37 +273,19 @@ export class VectorStore {
      * 使用AI提供商生成嵌入向量
      */
     private async generateEmbedding(content: string): Promise<number[]> {
-        // 这里需要根据具体的AI提供商实现嵌入生成
-        // 目前先使用模拟实现
-        
         try {
-            // 尝试调用AI提供商的嵌入API
-            // 注意：这需要AI提供商支持嵌入功能
-            const response = await this.aiProvider.chat([
-                {
-                    role: 'system',
-                    content: '请为以下内容生成语义向量表示。返回一个包含1536个浮点数的数组，表示内容的语义特征。'
-                },
-                {
-                    role: 'user',
-                    content: `内容: ${content.substring(0, 1000)}`
-                }
-            ]);
-            
-            // 尝试解析向量（这是一个简化的实现）
-            const vectorMatch = response.content.match(/\[([\d\.,\s-]+)\]/);
-            if (vectorMatch) {
-                const vector = vectorMatch[1].split(',').map(n => parseFloat(n.trim()));
-                if (vector.length === this.VECTOR_DIMENSION) {
-                    return vector;
-                }
+            // 检查AI提供商是否支持embedding
+            if (this.aiProvider.supportsEmbedding()) {
+                const response = await this.aiProvider.generateEmbedding(content.substring(0, 8000)); // 限制长度
+                return response.embedding;
+            } else {
+                console.warn('AI提供商不支持embedding，使用本地方法');
+                return this.generateLocalEmbedding(content);
             }
         } catch (error) {
-            console.warn('AI嵌入生成失败:', error);
+            console.warn('AI嵌入生成失败，使用本地方法:', error);
+            return this.generateLocalEmbedding(content);
         }
-        
-        // 降级到本地方法
-        return this.generateLocalEmbedding(content);
     }
 
     /**
