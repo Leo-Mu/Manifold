@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { AIProvider, AIConfig, ChatMessage, ChatResponse, createAIProvider } from './AIProvider';
+import { AIProvider, AIConfig, ChatMessage, ChatResponse, StreamChunk, createAIProvider } from './AIProvider';
 import { AIConfigManager, SavedAIConfig } from './AIConfigManager';
 import { ContextItem } from '../types/ContextTypes';
 
@@ -132,6 +132,98 @@ export class ChatManager {
         } catch (error) {
             vscode.window.showErrorMessage(`AI 对话失败: ${error}`);
             throw error;
+        }
+    }
+
+    async sendMessageStream(
+        userMessage: string,
+        onChunk: (chunk: StreamChunk) => void,
+        contextItems: ContextItem[] = [],
+        systemPrompt?: string
+    ): Promise<void> {
+        if (!this.aiProvider) {
+            throw new Error('AI 提供商未初始化，请先配置 API');
+        }
+
+        // 创建或更新当前会话
+        if (!this.currentSession) {
+            this.currentSession = this.createNewSession(contextItems);
+        }
+
+        // 构建消息列表
+        const messages: ChatMessage[] = [];
+
+        // 添加系统提示
+        if (systemPrompt || contextItems.length > 0) {
+            const systemContent = this.buildSystemPrompt(systemPrompt, contextItems);
+            messages.push({
+                role: 'system',
+                content: systemContent
+            });
+        }
+
+        // 添加历史对话
+        messages.push(...this.currentSession.messages);
+
+        // 添加用户消息
+        const userMsg: ChatMessage = {
+            role: 'user',
+            content: userMessage
+        };
+        messages.push(userMsg);
+
+        // 保存用户消息到会话历史
+        this.currentSession.messages.push(userMsg);
+
+        let assistantContent = '';
+
+        try {
+            // 尝试发送流式请求到 AI
+            await this.aiProvider.chatStream(messages, (chunk) => {
+                if (!chunk.finished) {
+                    assistantContent += chunk.content;
+                }
+                onChunk(chunk);
+            });
+
+            // 保存助手回复到会话历史
+            this.currentSession.messages.push({
+                role: 'assistant',
+                content: assistantContent
+            });
+            this.currentSession.updatedAt = new Date();
+
+            // 保存会话
+            await this.saveSessions();
+
+        } catch (error) {
+            console.warn('流式输出失败，尝试降级到普通模式:', error);
+            
+            try {
+                // 降级到普通模式
+                const response = await this.aiProvider.chat(messages);
+                
+                // 发送完整响应作为单个块
+                onChunk({
+                    content: response.content,
+                    finished: true,
+                    usage: response.usage
+                });
+
+                // 保存助手回复到会话历史
+                this.currentSession.messages.push({
+                    role: 'assistant',
+                    content: response.content
+                });
+                this.currentSession.updatedAt = new Date();
+
+                // 保存会话
+                await this.saveSessions();
+
+            } catch (fallbackError) {
+                vscode.window.showErrorMessage(`AI 对话失败: ${fallbackError}`);
+                throw fallbackError;
+            }
         }
     }
 

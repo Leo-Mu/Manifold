@@ -635,15 +635,21 @@ async function handleSendMessage(
         // 获取选中的上下文
         const contextItems = await contextManager.getContextsByIds(contextIds);
 
-        // 发送消息到AI
-        const response = await chatManager.sendMessage(userMessage, contextItems, systemPrompt);
-
-        // 返回响应
-        panel.webview.postMessage({
-            command: 'messageResponse',
-            response: response.content,
-            usage: response.usage
-        });
+        // 发送流式消息到AI
+        await chatManager.sendMessageStream(
+            userMessage,
+            (chunk) => {
+                // 发送流式数据块到前端
+                panel.webview.postMessage({
+                    command: 'streamChunk',
+                    content: chunk.content,
+                    finished: chunk.finished,
+                    usage: chunk.usage
+                });
+            },
+            contextItems,
+            systemPrompt
+        );
 
         // 刷新聊天树
         chatTreeProvider.refresh();
@@ -982,6 +988,27 @@ function getChatWebviewContent(): string {
                 font-size: 13px;
                 line-height: 1.4;
             }
+            
+            /* 流式消息样式 */
+            .stream-message {
+                position: relative;
+            }
+            
+            .stream-message::after {
+                content: '▋';
+                color: var(--vscode-charts-green);
+                animation: blink 1s infinite;
+                margin-left: 2px;
+            }
+            
+            @keyframes blink {
+                0%, 50% { opacity: 1; }
+                51%, 100% { opacity: 0; }
+            }
+            
+            .stream-content {
+                min-height: 1.2em;
+            }
         </style>
     </head>
     <body>
@@ -1040,6 +1067,9 @@ function getChatWebviewContent(): string {
                         break;
                     case 'messageResponse':
                         handleMessageResponse(message.response, message.usage);
+                        break;
+                    case 'streamChunk':
+                        handleStreamChunk(message.content, message.finished, message.usage);
                         break;
                     case 'messageError':
                         handleMessageError(message.error);
@@ -1161,7 +1191,68 @@ function getChatWebviewContent(): string {
                 adjustTextareaHeight(messageInput);
             }
             
+            let currentStreamMessage = null;
+            
+            function handleStreamChunk(content, finished, usage) {
+                const historyEl = document.getElementById('chatHistory');
+                const container = historyEl.parentElement;
+                
+                if (!currentStreamMessage) {
+                    // 移除加载指示器
+                    const loadingMessage = historyEl.querySelector('.loading-message');
+                    if (loadingMessage) {
+                        loadingMessage.remove();
+                    }
+                    
+                    // 创建新的流式消息容器
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message assistant-message stream-message';
+                    messageDiv.innerHTML = \`
+                        <strong>🤖 助手</strong>
+                        <div class="stream-content"></div>
+                        <div class="stream-usage" style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground); display: none;"></div>
+                    \`;
+                    historyEl.appendChild(messageDiv);
+                    currentStreamMessage = messageDiv;
+                }
+                
+                if (content) {
+                    // 添加新内容到流式消息
+                    const contentEl = currentStreamMessage.querySelector('.stream-content');
+                    const currentContent = contentEl.textContent || '';
+                    const newContent = currentContent + content;
+                    contentEl.innerHTML = formatMessageContent(newContent);
+                }
+                
+                if (finished) {
+                    // 流式输出完成
+                    isLoading = false;
+                    document.body.classList.remove('loading');
+                    
+                    const sendButton = document.getElementById('sendButton');
+                    sendButton.disabled = false;
+                    sendButton.textContent = '发送';
+                    
+                    // 显示使用统计
+                    if (usage) {
+                        const usageEl = currentStreamMessage.querySelector('.stream-usage');
+                        usageEl.textContent = \`Token 使用: \${usage.totalTokens}\`;
+                        usageEl.style.display = 'block';
+                    }
+                    
+                    // 移除流式标记
+                    currentStreamMessage.classList.remove('stream-message');
+                    currentStreamMessage = null;
+                }
+                
+                // 滚动到底部
+                setTimeout(() => {
+                    container.scrollTop = container.scrollHeight;
+                }, 10);
+            }
+            
             function handleMessageResponse(response, usage) {
+                // 这个函数现在主要用于非流式响应的兼容性
                 isLoading = false;
                 document.body.classList.remove('loading');
                 
@@ -1202,10 +1293,16 @@ function getChatWebviewContent(): string {
                 const historyEl = document.getElementById('chatHistory');
                 const container = historyEl.parentElement;
                 
-                // 移除加载指示器
+                // 移除加载指示器或流式消息
                 const loadingMessage = historyEl.querySelector('.loading-message');
                 if (loadingMessage) {
                     loadingMessage.remove();
+                }
+                
+                // 如果有未完成的流式消息，也要清理
+                if (currentStreamMessage) {
+                    currentStreamMessage.remove();
+                    currentStreamMessage = null;
                 }
                 
                 // 添加错误消息

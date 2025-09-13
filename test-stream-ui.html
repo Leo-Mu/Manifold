@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>流式AI对话测试</title>
+    <style>
+        :root {
+            --vscode-font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --vscode-editor-background: #1e1e1e;
+            --vscode-editor-foreground: #d4d4d4;
+            --vscode-panel-border: #3c3c3c;
+            --vscode-input-background: #3c3c3c;
+            --vscode-input-border: #464647;
+            --vscode-input-foreground: #cccccc;
+            --vscode-button-background: #0e639c;
+            --vscode-button-foreground: #ffffff;
+            --vscode-button-hoverBackground: #1177bb;
+            --vscode-focusBorder: #007acc;
+            --vscode-charts-blue: #007acc;
+            --vscode-charts-green: #89d185;
+            --vscode-charts-red: #f85149;
+            --vscode-badge-background: #4d4d4d;
+            --vscode-badge-foreground: #ffffff;
+            --vscode-list-activeSelectionBackground: #094771;
+            --vscode-list-activeSelectionForeground: #ffffff;
+            --vscode-list-hoverBackground: #2a2d2e;
+            --vscode-textBlockQuote-background: #262626;
+            --vscode-textCodeBlock-background: #0d1117;
+            --vscode-descriptionForeground: #cccccc99;
+            --vscode-scrollbarSlider-background: #79797966;
+            --vscode-scrollbarSlider-hoverBackground: #646464b3;
+            --vscode-activityBarBadge-background: #007acc;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+        
+        html, body { 
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: var(--vscode-font-family); 
+            background: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
+            overflow: hidden;
+        }
+        
+        .chat-layout {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .chat-header {
+            flex-shrink: 0;
+            padding: 15px 20px 10px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+        }
+        
+        .chat-header h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .chat-history-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px 20px;
+            scroll-behavior: smooth;
+        }
+        
+        .message { 
+            margin: 15px 0; 
+            padding: 12px 16px; 
+            border-radius: 8px; 
+            border-left: 4px solid var(--vscode-activityBarBadge-background);
+            word-wrap: break-word;
+            line-height: 1.5;
+        }
+        
+        .user-message { 
+            background: var(--vscode-input-background);
+            border-left-color: var(--vscode-charts-blue);
+            margin-left: 20px;
+        }
+        
+        .assistant-message { 
+            background: var(--vscode-textBlockQuote-background);
+            border-left-color: var(--vscode-charts-green);
+            margin-right: 20px;
+        }
+        
+        .message strong {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .input-area { 
+            flex-shrink: 0;
+            background: var(--vscode-editor-background);
+            padding: 15px 20px;
+            border-top: 1px solid var(--vscode-panel-border);
+            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .input-row { 
+            display: flex; 
+            gap: 10px; 
+            align-items: flex-end;
+        }
+        
+        #messageInput { 
+            flex: 1; 
+            padding: 10px 12px; 
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 4px;
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            font-family: var(--vscode-font-family);
+            font-size: 14px;
+            min-height: 40px;
+            resize: none;
+        }
+        
+        #messageInput:focus {
+            outline: 1px solid var(--vscode-focusBorder);
+            border-color: var(--vscode-focusBorder);
+        }
+        
+        button { 
+            padding: 10px 16px; 
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: var(--vscode-font-family);
+            font-size: 13px;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+            min-height: 40px;
+        }
+        
+        button:hover { 
+            background: var(--vscode-button-hoverBackground); 
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        /* 流式消息样式 */
+        .stream-message {
+            position: relative;
+        }
+        
+        .stream-message::after {
+            content: '▋';
+            color: var(--vscode-charts-green);
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        .stream-content {
+            min-height: 1.2em;
+        }
+        
+        .demo-controls {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: var(--vscode-input-background);
+            border-radius: 4px;
+            border: 1px solid var(--vscode-input-border);
+        }
+        
+        .demo-controls label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+        }
+        
+        .demo-controls input {
+            width: 100px;
+            padding: 4px 8px;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            color: var(--vscode-input-foreground);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-layout">
+        <div class="chat-header">
+            <h2>🤖 流式AI对话测试</h2>
+        </div>
+        
+        <div class="chat-history-container">
+            <div id="chatHistory">
+                <div class="message user-message">
+                    <strong>👤 您</strong>
+                    <div>请写一个关于人工智能的简短介绍</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="input-area">
+            <div class="demo-controls">
+                <label>流式输出速度 (毫秒/字符):</label>
+                <input type="number" id="streamSpeed" value="50" min="10" max="500">
+                <button onclick="startStreamDemo()" style="margin-left: 10px; min-height: 30px; padding: 5px 10px;">开始流式演示</button>
+            </div>
+            
+            <div class="input-row">
+                <textarea id="messageInput" placeholder="输入您的消息..." rows="1"></textarea>
+                <button id="sendButton" onclick="simulateStream()">发送</button>
+                <button onclick="clearChat()">清空</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStreamMessage = null;
+        let isStreaming = false;
+
+        const sampleResponse = `人工智能（Artificial Intelligence，简称AI）是计算机科学的一个分支，致力于创建能够执行通常需要人类智能的任务的系统。
+
+AI的主要目标包括：
+- 学习和推理
+- 问题解决
+- 感知和理解
+- 语言处理
+- 决策制定
+
+现代AI技术广泛应用于：
+1. 机器学习和深度学习
+2. 自然语言处理
+3. 计算机视觉
+4. 语音识别
+5. 推荐系统
+
+AI正在改变我们的生活方式，从智能手机的语音助手到自动驾驶汽车，从医疗诊断到金融分析，AI技术无处不在。
+
+随着技术的不断发展，AI将继续为人类社会带来更多的便利和创新。`;
+
+        function simulateStream() {
+            if (isStreaming) return;
+            
+            const messageInput = document.getElementById('messageInput');
+            const text = messageInput.value.trim();
+            
+            if (!text) return;
+            
+            isStreaming = true;
+            const sendButton = document.getElementById('sendButton');
+            sendButton.disabled = true;
+            sendButton.textContent = '发送中...';
+            
+            // 添加用户消息
+            const historyEl = document.getElementById('chatHistory');
+            const container = historyEl.parentElement;
+            
+            historyEl.innerHTML += `<div class="message user-message">
+                <strong>👤 您</strong>
+                <div>${text}</div>
+            </div>`;
+            
+            messageInput.value = '';
+            
+            // 开始流式输出
+            startStreamResponse();
+        }
+        
+        function startStreamResponse() {
+            const historyEl = document.getElementById('chatHistory');
+            const container = historyEl.parentElement;
+            
+            // 创建流式消息容器
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant-message stream-message';
+            messageDiv.innerHTML = `
+                <strong>🤖 助手</strong>
+                <div class="stream-content"></div>
+            `;
+            historyEl.appendChild(messageDiv);
+            currentStreamMessage = messageDiv;
+            
+            // 模拟流式输出
+            const speed = parseInt(document.getElementById('streamSpeed').value) || 50;
+            let index = 0;
+            
+            function outputNextChar() {
+                if (index < sampleResponse.length) {
+                    const contentEl = currentStreamMessage.querySelector('.stream-content');
+                    const currentContent = contentEl.textContent || '';
+                    const newContent = currentContent + sampleResponse[index];
+                    contentEl.textContent = newContent;
+                    
+                    index++;
+                    
+                    // 滚动到底部
+                    container.scrollTop = container.scrollHeight;
+                    
+                    setTimeout(outputNextChar, speed);
+                } else {
+                    // 流式输出完成
+                    finishStream();
+                }
+            }
+            
+            outputNextChar();
+        }
+        
+        function finishStream() {
+            isStreaming = false;
+            
+            const sendButton = document.getElementById('sendButton');
+            sendButton.disabled = false;
+            sendButton.textContent = '发送';
+            
+            if (currentStreamMessage) {
+                // 移除流式标记和光标
+                currentStreamMessage.classList.remove('stream-message');
+                
+                // 添加使用统计
+                const usageDiv = document.createElement('div');
+                usageDiv.style.marginTop = '8px';
+                usageDiv.style.fontSize = '11px';
+                usageDiv.style.color = 'var(--vscode-descriptionForeground)';
+                usageDiv.textContent = 'Token 使用: 256';
+                currentStreamMessage.appendChild(usageDiv);
+                
+                currentStreamMessage = null;
+            }
+            
+            // 滚动到底部
+            const container = document.querySelector('.chat-history-container');
+            setTimeout(() => {
+                container.scrollTop = container.scrollHeight;
+            }, 100);
+        }
+        
+        function startStreamDemo() {
+            if (isStreaming) return;
+            
+            const historyEl = document.getElementById('chatHistory');
+            
+            // 添加演示用户消息
+            historyEl.innerHTML += `<div class="message user-message">
+                <strong>👤 您</strong>
+                <div>演示流式输出效果</div>
+            </div>`;
+            
+            startStreamResponse();
+        }
+        
+        function clearChat() {
+            const historyEl = document.getElementById('chatHistory');
+            historyEl.innerHTML = '';
+            currentStreamMessage = null;
+            isStreaming = false;
+            
+            const sendButton = document.getElementById('sendButton');
+            sendButton.disabled = false;
+            sendButton.textContent = '发送';
+        }
+        
+        // 回车发送
+        document.getElementById('messageInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                simulateStream();
+            }
+        });
+    </script>
+</body>
+</html>
