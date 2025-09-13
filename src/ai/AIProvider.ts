@@ -121,6 +121,23 @@ export class OpenAIProvider extends AIProvider {
 
         return new Promise((resolve, reject) => {
             let buffer = '';
+            let isFinished = false;
+
+            const finishStream = (usage?: any) => {
+                if (isFinished) return;
+                isFinished = true;
+                
+                onChunk({
+                    content: '',
+                    finished: true,
+                    usage: usage ? {
+                        promptTokens: usage.prompt_tokens,
+                        completionTokens: usage.completion_tokens,
+                        totalTokens: usage.total_tokens
+                    } : undefined
+                });
+                resolve();
+            };
 
             response.body!.on('data', (chunk: Buffer) => {
                 try {
@@ -136,8 +153,7 @@ export class OpenAIProvider extends AIProvider {
 
                         const data = trimmed.slice(6);
                         if (data === '[DONE]') {
-                            onChunk({ content: '', finished: true });
-                            resolve();
+                            finishStream();
                             return;
                         }
 
@@ -154,17 +170,7 @@ export class OpenAIProvider extends AIProvider {
 
                             // 检查是否完成
                             if (parsed.choices?.[0]?.finish_reason) {
-                                const usage = parsed.usage;
-                                onChunk({
-                                    content: '',
-                                    finished: true,
-                                    usage: usage ? {
-                                        promptTokens: usage.prompt_tokens,
-                                        completionTokens: usage.completion_tokens,
-                                        totalTokens: usage.total_tokens
-                                    } : undefined
-                                });
-                                resolve();
+                                finishStream(parsed.usage);
                                 return;
                             }
                         } catch (e) {
@@ -177,8 +183,7 @@ export class OpenAIProvider extends AIProvider {
             });
 
             response.body!.on('end', () => {
-                onChunk({ content: '', finished: true });
-                resolve();
+                finishStream();
             });
 
             response.body!.on('error', (error: Error) => {
@@ -266,6 +271,23 @@ export class AnthropicProvider extends AIProvider {
 
         return new Promise((resolve, reject) => {
             let buffer = '';
+            let isFinished = false;
+
+            const finishStream = (usage?: any) => {
+                if (isFinished) return;
+                isFinished = true;
+                
+                onChunk({
+                    content: '',
+                    finished: true,
+                    usage: usage ? {
+                        promptTokens: usage.input_tokens,
+                        completionTokens: usage.output_tokens,
+                        totalTokens: usage.input_tokens + usage.output_tokens
+                    } : undefined
+                });
+                resolve();
+            };
 
             response.body!.on('data', (chunk: Buffer) => {
                 try {
@@ -290,17 +312,7 @@ export class AnthropicProvider extends AIProvider {
                                     finished: false
                                 });
                             } else if (parsed.type === 'message_stop') {
-                                const usage = parsed.usage;
-                                onChunk({
-                                    content: '',
-                                    finished: true,
-                                    usage: usage ? {
-                                        promptTokens: usage.input_tokens,
-                                        completionTokens: usage.output_tokens,
-                                        totalTokens: usage.input_tokens + usage.output_tokens
-                                    } : undefined
-                                });
-                                resolve();
+                                finishStream(parsed.usage);
                                 return;
                             }
                         } catch (e) {
@@ -313,8 +325,7 @@ export class AnthropicProvider extends AIProvider {
             });
 
             response.body!.on('end', () => {
-                onChunk({ content: '', finished: true });
-                resolve();
+                finishStream();
             });
 
             response.body!.on('error', (error: Error) => {
@@ -404,6 +415,23 @@ export class CustomProvider extends AIProvider {
 
         return new Promise((resolve, reject) => {
             let buffer = '';
+            let isFinished = false;
+
+            const finishStream = (usage?: any) => {
+                if (isFinished) return;
+                isFinished = true;
+                
+                onChunk({
+                    content: '',
+                    finished: true,
+                    usage: usage ? {
+                        promptTokens: usage.prompt_tokens,
+                        completionTokens: usage.completion_tokens,
+                        totalTokens: usage.total_tokens
+                    } : undefined
+                });
+                resolve();
+            };
 
             response.body!.on('data', (chunk: Buffer) => {
                 try {
@@ -419,8 +447,7 @@ export class CustomProvider extends AIProvider {
 
                         const data = trimmed.slice(6);
                         if (data === '[DONE]') {
-                            onChunk({ content: '', finished: true });
-                            resolve();
+                            finishStream();
                             return;
                         }
 
@@ -438,17 +465,7 @@ export class CustomProvider extends AIProvider {
 
                             // 检查是否完成
                             if (parsed.choices?.[0]?.finish_reason) {
-                                const usage = parsed.usage;
-                                onChunk({
-                                    content: '',
-                                    finished: true,
-                                    usage: usage ? {
-                                        promptTokens: usage.prompt_tokens,
-                                        completionTokens: usage.completion_tokens,
-                                        totalTokens: usage.total_tokens
-                                    } : undefined
-                                });
-                                resolve();
+                                finishStream(parsed.usage);
                                 return;
                             }
                         } catch (e) {
@@ -461,8 +478,7 @@ export class CustomProvider extends AIProvider {
             });
 
             response.body!.on('end', () => {
-                onChunk({ content: '', finished: true });
-                resolve();
+                finishStream();
             });
 
             response.body!.on('error', (error: Error) => {
