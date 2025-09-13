@@ -29,13 +29,43 @@
         "command": "vibeContext.composeContext",
         "title": "组合上下文",
         "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.configureAI",
+        "title": "配置 AI 提供商",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.openChatInterface",
+        "title": "打开 AI 对话界面",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.chatWithContext",
+        "title": "基于上下文对话",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.newChat",
+        "title": "新建对话",
+        "category": "Vibe Context"
+      },
+      {
+        "command": "vibeContext.showContextStats",
+        "title": "显示上下文统计",
+        "category": "Vibe Context"
       }
     ],
     "views": {
-      "explorer": [
+      "vibeContextContainer": [
         {
           "id": "vibeContextTree",
-          "name": "Context History",
+          "name": "上下文历史",
+          "when": "vibeContext.enabled"
+        },
+        {
+          "id": "vibeChatTree",
+          "name": "AI 对话",
           "when": "vibeContext.enabled"
         }
       ]
@@ -59,6 +89,16 @@
         "command": "vibeContext.composeContext",
         "key": "ctrl+k ctrl+c",
         "mac": "cmd+k cmd+c"
+      },
+      {
+        "command": "vibeContext.openChatInterface",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a"
+      },
+      {
+        "command": "vibeContext.chatWithContext",
+        "key": "ctrl+k ctrl+a",
+        "mac": "cmd+k cmd+a"
       }
     ],
     "configuration": {
@@ -73,6 +113,10 @@
           "type": "number",
           "default": 100,
           "description": "最大历史记录数量"
+        },
+        "vibeContext.aiConfig": {
+          "type": "object",
+          "description": "AI 提供商配置（不包含敏感信息）"
         }
       }
     }
@@ -89,6 +133,8 @@
     "typescript": "^4.9.4"
   },
   "dependencies": {
-    "lowdb": "^1.0.0"
+    "@types/node-fetch": "^2.6.13",
+    "lowdb": "^1.0.0",
+    "node-fetch": "^3.3.2"
   }
 }

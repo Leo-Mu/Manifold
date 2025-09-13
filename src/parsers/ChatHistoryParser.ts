@@ -76,7 +76,56 @@ export class ChatHistoryParser {
     private extractQABlocks(content: string): QABlock[] {
         const qaBlocks: QABlock[] = [];
         
-        // 简单的问答识别模式
+        // 1. 处理 Markdown 标题作为问题
+        this.extractMarkdownSections(content, qaBlocks);
+        
+        // 2. 处理传统问答格式
+        this.extractTraditionalQA(content, qaBlocks);
+        
+        // 3. 处理常见问题格式
+        this.extractFAQFormat(content, qaBlocks);
+
+        return qaBlocks;
+    }
+
+    private extractMarkdownSections(content: string, qaBlocks: QABlock[]): void {
+        const lines = content.split('\n');
+        let currentSection = '';
+        let currentContent = '';
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // 检测 Markdown 标题
+            if (line.match(/^#{1,6}\s+/)) {
+                // 保存之前的章节
+                if (currentSection && currentContent.trim()) {
+                    qaBlocks.push({
+                        question: currentSection.replace(/^#{1,6}\s+/, '').trim(),
+                        answer: currentContent.trim()
+                    });
+                }
+                
+                currentSection = line;
+                currentContent = '';
+            } else if (currentSection) {
+                // 跳过代码块
+                if (!line.startsWith('```')) {
+                    currentContent += line + '\n';
+                }
+            }
+        }
+        
+        // 保存最后一个章节
+        if (currentSection && currentContent.trim()) {
+            qaBlocks.push({
+                question: currentSection.replace(/^#{1,6}\s+/, '').trim(),
+                answer: currentContent.trim()
+            });
+        }
+    }
+
+    private extractTraditionalQA(content: string, qaBlocks: QABlock[]): void {
         const lines = content.split('\n');
         let currentQuestion = '';
         let currentAnswer = '';
@@ -114,8 +163,24 @@ export class ChatHistoryParser {
                 answer: currentAnswer.trim()
             });
         }
+    }
 
-        return qaBlocks;
+    private extractFAQFormat(content: string, qaBlocks: QABlock[]): void {
+        // 匹配 **Q: 问题** 格式
+        const faqRegex = /\*\*Q:\s*(.*?)\*\*\s*\n([\s\S]*?)(?=\*\*Q:|$)/g;
+        let match;
+
+        while ((match = faqRegex.exec(content)) !== null) {
+            const question = match[1].trim();
+            const answer = match[2].trim();
+            
+            if (question && answer) {
+                qaBlocks.push({
+                    question: question,
+                    answer: answer
+                });
+            }
+        }
     }
 
     private isQuestion(line: string): boolean {
@@ -124,8 +189,13 @@ export class ChatHistoryParser {
                line.endsWith('？') ||
                line.startsWith('Q:') ||
                line.startsWith('问:') ||
+               line.startsWith('**Q:') ||
                line.includes('如何') ||
                line.includes('怎么') ||
-               line.includes('什么是');
+               line.includes('什么是') ||
+               line.includes('为什么') ||
+               line.includes('能否') ||
+               line.includes('可以') ||
+               line.includes('应该');
     }
 }
