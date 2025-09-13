@@ -286,55 +286,280 @@ function getWebviewContent(): string {
 // AI 配置函数
 async function configureAI() {
     try {
+        // 第一步：选择提供商
         const provider = await vscode.window.showQuickPick([
-            { label: 'OpenAI', value: 'openai' },
-            { label: 'Anthropic (Claude)', value: 'anthropic' },
-            { label: '自定义 API', value: 'custom' }
+            { 
+                label: 'OpenAI', 
+                value: 'openai',
+                description: '使用 OpenAI GPT 模型',
+                detail: '支持 GPT-3.5-turbo, GPT-4 等模型'
+            },
+            { 
+                label: 'Anthropic (Claude)', 
+                value: 'anthropic',
+                description: '使用 Anthropic Claude 模型',
+                detail: '支持 Claude-3 系列模型'
+            },
+            { 
+                label: '自定义 API', 
+                value: 'custom',
+                description: '使用兼容 OpenAI 格式的自定义 API',
+                detail: '需要提供完整的 API 端点地址'
+            }
         ], {
-            placeHolder: '选择 AI 提供商'
+            placeHolder: '选择 AI 提供商',
+            matchOnDescription: true,
+            matchOnDetail: true
         });
 
         if (!provider) return;
 
-        const apiKey = await vscode.window.showInputBox({
-            prompt: '请输入 API Key',
-            password: true,
-            placeHolder: '输入您的 API Key'
-        });
-
-        if (!apiKey) return;
-
-        let baseUrl: string | undefined;
-        if (provider.value === 'custom') {
-            baseUrl = await vscode.window.showInputBox({
-                prompt: '请输入 API 基础 URL',
-                placeHolder: 'https://api.example.com/v1/chat/completions'
-            });
-            if (!baseUrl) return;
-        }
-
-        const model = await vscode.window.showInputBox({
-            prompt: '请输入模型名称',
-            placeHolder: provider.value === 'openai' ? 'gpt-3.5-turbo' : 
-                        provider.value === 'anthropic' ? 'claude-3-sonnet-20240229' : 
-                        'your-model-name'
-        });
-
-        if (!model) return;
-
-        await chatManager.initializeAI({
-            provider: provider.value as any,
-            apiKey,
-            baseUrl,
-            model,
+        let config: any = {
+            provider: provider.value,
             temperature: 0.7,
             maxTokens: 2000
-        });
+        };
 
-        chatTreeProvider.refresh();
+        // 根据不同提供商配置不同的参数
+        if (provider.value === 'openai') {
+            config = await configureOpenAI(config);
+        } else if (provider.value === 'anthropic') {
+            config = await configureAnthropic(config);
+        } else if (provider.value === 'custom') {
+            config = await configureCustomAPI(config);
+        }
+
+        if (!config) return;
+
+        // 显示配置摘要
+        const summary = `配置摘要：
+提供商: ${config.provider}
+${config.baseUrl ? `API 地址: ${config.baseUrl}` : ''}
+模型: ${config.model}
+温度: ${config.temperature}
+最大 Token: ${config.maxTokens}`;
+
+        const confirm = await vscode.window.showInformationMessage(
+            summary + '\n\n确认保存此配置？',
+            '保存配置',
+            '重新配置'
+        );
+
+        if (confirm === '保存配置') {
+            await chatManager.initializeAI(config);
+            chatTreeProvider.refresh();
+        } else if (confirm === '重新配置') {
+            await configureAI(); // 递归重新配置
+        }
+
     } catch (error) {
         vscode.window.showErrorMessage(`AI 配置失败: ${error}`);
     }
+}
+
+async function configureOpenAI(config: any) {
+    // API Key
+    const apiKey = await vscode.window.showInputBox({
+        prompt: '请输入 OpenAI API Key',
+        password: true,
+        placeHolder: 'sk-...',
+        validateInput: (value) => {
+            if (!value) return 'API Key 不能为空';
+            if (!value.startsWith('sk-')) return 'OpenAI API Key 应该以 sk- 开头';
+            return null;
+        }
+    });
+    if (!apiKey) return null;
+
+    // 自定义 Base URL（可选）
+    const useCustomUrl = await vscode.window.showQuickPick([
+        { label: '使用默认 API 地址', value: false },
+        { label: '使用自定义 API 地址（如代理）', value: true }
+    ], {
+        placeHolder: '选择 API 地址配置'
+    });
+
+    let baseUrl: string | undefined;
+    if (useCustomUrl?.value) {
+        baseUrl = await vscode.window.showInputBox({
+            prompt: '请输入自定义 OpenAI API 地址',
+            placeHolder: 'https://your-proxy.com/v1/chat/completions',
+            validateInput: (value) => {
+                if (!value) return 'API 地址不能为空';
+                try {
+                    new URL(value);
+                    return null;
+                } catch {
+                    return '请输入有效的 URL 地址';
+                }
+            }
+        });
+        if (!baseUrl) return null;
+    }
+
+    // 模型选择
+    const model = await vscode.window.showQuickPick([
+        { label: 'gpt-3.5-turbo', description: '快速、经济的选择' },
+        { label: 'gpt-3.5-turbo-16k', description: '支持更长上下文' },
+        { label: 'gpt-4', description: '更强大但较慢' },
+        { label: 'gpt-4-turbo-preview', description: '最新的 GPT-4 模型' },
+        { label: '自定义模型', value: 'custom' }
+    ], {
+        placeHolder: '选择 OpenAI 模型'
+    });
+    if (!model) return null;
+
+    let modelName = model.label;
+    if (model.value === 'custom') {
+        const customModel = await vscode.window.showInputBox({
+            prompt: '请输入自定义模型名称',
+            placeHolder: 'gpt-4-custom'
+        });
+        if (!customModel) return null;
+        modelName = customModel;
+    }
+
+    return {
+        ...config,
+        apiKey,
+        baseUrl,
+        model: modelName
+    };
+}
+
+async function configureAnthropic(config: any) {
+    // API Key
+    const apiKey = await vscode.window.showInputBox({
+        prompt: '请输入 Anthropic API Key',
+        password: true,
+        placeHolder: 'sk-ant-...',
+        validateInput: (value) => {
+            if (!value) return 'API Key 不能为空';
+            if (!value.startsWith('sk-ant-')) return 'Anthropic API Key 应该以 sk-ant- 开头';
+            return null;
+        }
+    });
+    if (!apiKey) return null;
+
+    // 模型选择
+    const model = await vscode.window.showQuickPick([
+        { label: 'claude-3-haiku-20240307', description: '最快最经济的模型' },
+        { label: 'claude-3-sonnet-20240229', description: '平衡性能和速度' },
+        { label: 'claude-3-opus-20240229', description: '最强大的模型' },
+        { label: '自定义模型', value: 'custom' }
+    ], {
+        placeHolder: '选择 Claude 模型'
+    });
+    if (!model) return null;
+
+    let modelName = model.label;
+    if (model.value === 'custom') {
+        const customModel = await vscode.window.showInputBox({
+            prompt: '请输入自定义 Claude 模型名称',
+            placeHolder: 'claude-3-custom'
+        });
+        if (!customModel) return null;
+        modelName = customModel;
+    }
+
+    return {
+        ...config,
+        apiKey,
+        model: modelName
+    };
+}
+
+async function configureCustomAPI(config: any) {
+    // API 地址（必填）
+    const baseUrl = await vscode.window.showInputBox({
+        prompt: '请输入完整的 API 端点地址',
+        placeHolder: 'https://api.example.com/v1/chat/completions',
+        validateInput: (value) => {
+            if (!value) return 'API 地址不能为空';
+            try {
+                const url = new URL(value);
+                if (!url.protocol.startsWith('http')) {
+                    return '请输入有效的 HTTP/HTTPS 地址';
+                }
+                return null;
+            } catch {
+                return '请输入有效的 URL 地址';
+            }
+        }
+    });
+    if (!baseUrl) return null;
+
+    // API Key
+    const apiKey = await vscode.window.showInputBox({
+        prompt: '请输入 API Key',
+        password: true,
+        placeHolder: '输入您的 API Key',
+        validateInput: (value) => {
+            if (!value) return 'API Key 不能为空';
+            return null;
+        }
+    });
+    if (!apiKey) return null;
+
+    // 模型名称
+    const model = await vscode.window.showInputBox({
+        prompt: '请输入模型名称',
+        placeHolder: 'your-model-name',
+        validateInput: (value) => {
+            if (!value) return '模型名称不能为空';
+            return null;
+        }
+    });
+    if (!model) return null;
+
+    // 高级配置
+    const advancedConfig = await vscode.window.showQuickPick([
+        { label: '使用默认参数', value: false },
+        { label: '自定义高级参数', value: true }
+    ], {
+        placeHolder: '是否需要自定义高级参数？'
+    });
+
+    if (advancedConfig?.value) {
+        // 温度设置
+        const temperatureStr = await vscode.window.showInputBox({
+            prompt: '请输入温度参数 (0.0-2.0)',
+            value: '0.7',
+            validateInput: (value) => {
+                const num = parseFloat(value);
+                if (isNaN(num) || num < 0 || num > 2) {
+                    return '温度参数应该在 0.0 到 2.0 之间';
+                }
+                return null;
+            }
+        });
+        if (temperatureStr) {
+            config.temperature = parseFloat(temperatureStr);
+        }
+
+        // 最大 Token 设置
+        const maxTokensStr = await vscode.window.showInputBox({
+            prompt: '请输入最大 Token 数量',
+            value: '2000',
+            validateInput: (value) => {
+                const num = parseInt(value);
+                if (isNaN(num) || num < 1 || num > 32000) {
+                    return 'Token 数量应该在 1 到 32000 之间';
+                }
+                return null;
+            }
+        });
+        if (maxTokensStr) {
+            config.maxTokens = parseInt(maxTokensStr);
+        }
+    }
+
+    return {
+        ...config,
+        apiKey,
+        baseUrl,
+        model
+    };
 }
 
 async function openChatInterface() {

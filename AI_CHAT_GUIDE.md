@@ -69,24 +69,33 @@ Vibe Context: 基于上下文对话
 你是一个专业的代码审查专家，请仔细分析提供的代码并给出改进建议。
 ```
 
-#### API 配置示例
+#### API 配置流程
 
 **OpenAI 配置**:
-- Provider: `openai`
-- API Key: `sk-xxx...`
-- Model: `gpt-3.5-turbo` 或 `gpt-4`
-- Base URL: 默认或自定义（如代理）
+1. 选择 "OpenAI" 提供商
+2. 输入 API Key (以 `sk-` 开头)
+3. 选择是否使用自定义 API 地址（代理等）
+4. 选择模型：`gpt-3.5-turbo`, `gpt-4`, `gpt-4-turbo-preview` 等
 
 **Anthropic 配置**:
-- Provider: `anthropic`  
-- API Key: `sk-ant-xxx...`
-- Model: `claude-3-sonnet-20240229`
+1. 选择 "Anthropic (Claude)" 提供商
+2. 输入 API Key (以 `sk-ant-` 开头)
+3. 选择模型：`claude-3-haiku`, `claude-3-sonnet`, `claude-3-opus`
 
-**自定义 API**:
-- Provider: `custom`
-- API Key: 你的密钥
-- Base URL: `https://your-api.com/v1/chat/completions`
-- Model: 你的模型名称
+**自定义 API 配置**:
+1. 选择 "自定义 API" 提供商
+2. **必须输入完整的 API 端点地址**
+   - 示例：`https://your-api.com/v1/chat/completions`
+   - 支持各种兼容 OpenAI 格式的 API
+3. 输入对应的 API Key
+4. 输入模型名称
+5. 可选：配置高级参数（温度、最大Token等）
+
+#### 支持的自定义 API 服务
+
+- **本地部署**：Ollama, LocalAI, Text Generation WebUI
+- **云服务**：Azure OpenAI, 各种代理服务
+- **开源模型**：通过兼容接口部署的各种开源模型
 
 ## 使用场景
 
@@ -142,19 +151,33 @@ Vibe Context: 基于上下文对话
 ### 常见问题
 
 **Q: API调用失败**
-- 检查API Key是否正确
+- 检查API Key格式是否正确（OpenAI: `sk-`, Anthropic: `sk-ant-`）
 - 确认网络连接正常
-- 验证Base URL配置
+- 验证API地址是否完整和正确
+- 检查模型名称是否支持
+
+**Q: 自定义API无法连接**
+- 确保API地址包含完整路径（如 `/v1/chat/completions`）
+- 验证API服务是否兼容OpenAI格式
+- 检查防火墙和网络设置
+- 测试API地址是否可访问
 
 **Q: 上下文没有被识别**
 - 确保文件格式正确（Markdown等）
 - 检查代码块是否有正确的语言标识
 - 尝试重新解析当前对话
+- 使用"显示上下文统计"命令检查解析结果
 
 **Q: 对话响应慢**
 - 减少上下文数量
 - 降低最大Token设置
 - 检查网络延迟
+- 尝试使用更快的模型（如gpt-3.5-turbo）
+
+**Q: 配置丢失**
+- 配置保存在工作区设置中
+- API Key等敏感信息需要重新输入
+- 可以使用"配置AI提供商"命令重新设置
 
 ## 更新日志
 
