@@ -1,5 +1,5 @@
-import * as lowdb from 'lowdb';
-import * as FileSync from 'lowdb/adapters/FileSync';
+import lowdb from 'lowdb';
+import FileSync from 'lowdb/adapters/FileSync';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ContextItem } from '../types/ContextTypes';
@@ -25,7 +25,7 @@ export class DatabaseManager {
         this.db = lowdb(adapter);
         
         // 设置默认数据
-        this.db.defaults({ contexts: [] }).write();
+        this.db!.defaults({ contexts: [] }).write();
     }
 
     async insertContext(context: ContextItem): Promise<void> {
